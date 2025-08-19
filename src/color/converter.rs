@@ -1,5 +1,5 @@
-use super::model::Color;
 use super::keywords::COLOR_KEYWORDS;
+use super::model::Color;
 
 fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
     let s = s / 100.0;
@@ -7,7 +7,7 @@ fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
     let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
     let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
     let m = l - c / 2.0;
-    
+
     let (r_prime, g_prime, b_prime) = if h < 60.0 {
         (c, x, 0.0)
     } else if h < 120.0 {
@@ -21,7 +21,7 @@ fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
     } else {
         (c, 0.0, x)
     };
-    
+
     (
         ((r_prime + m) * 255.0).round() as u8,
         ((g_prime + m) * 255.0).round() as u8,
@@ -31,7 +31,7 @@ fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
 
 pub fn convert_to_color(color_str: &str) -> Option<Color> {
     let trimmed = color_str.trim().to_lowercase();
-    
+
     if let Some(hex) = trimmed.strip_prefix('#') {
         let (r, g, b, a) = match hex.len() {
             3 => (
@@ -62,20 +62,25 @@ pub fn convert_to_color(color_str: &str) -> Option<Color> {
         };
         return Some(Color { r, g, b, a });
     }
-    
-    if let Some(body) = trimmed.strip_prefix("rgb").and_then(|s| s.strip_suffix(')')) {
+
+    if let Some(body) = trimmed
+        .strip_prefix("rgb")
+        .and_then(|s| s.strip_suffix(')'))
+    {
         let (body, has_alpha) = if let Some(body_a) = body.strip_prefix('a') {
             (body_a, true)
         } else {
             (body, false)
         };
-        
-        let Some(inner) = body.strip_prefix('(') else { return None };
+
+        let Some(inner) = body.strip_prefix('(') else {
+            return None;
+        };
         let parts: Vec<&str> = inner
             .split(|c| c == ',' || c == ' ')
             .filter(|s| !s.is_empty())
             .collect();
-            
+
         if has_alpha && parts.len() == 4 {
             let r = parts[0].parse().ok()?;
             let g = parts[1].parse().ok()?;
@@ -94,20 +99,25 @@ pub fn convert_to_color(color_str: &str) -> Option<Color> {
             return Some(Color { r, g, b, a: 255 });
         }
     }
-    
-    if let Some(body) = trimmed.strip_prefix("hsl").and_then(|s| s.strip_suffix(')')) {
+
+    if let Some(body) = trimmed
+        .strip_prefix("hsl")
+        .and_then(|s| s.strip_suffix(')'))
+    {
         let (body, has_alpha) = if let Some(body_a) = body.strip_prefix('a') {
             (body_a, true)
         } else {
             (body, false)
         };
-        
-        let Some(inner) = body.strip_prefix('(') else { return None };
+
+        let Some(inner) = body.strip_prefix('(') else {
+            return None;
+        };
         let parts: Vec<&str> = inner
             .split(|c| c == ',' || c == ' ')
             .filter(|s| !s.is_empty())
             .collect();
-            
+
         if has_alpha && parts.len() == 4 {
             let h = parts[0]
                 .trim_end_matches(|c: char| !c.is_numeric() && c != '.')
@@ -134,13 +144,13 @@ pub fn convert_to_color(color_str: &str) -> Option<Color> {
             return Some(Color { r, g, b, a: 255 });
         }
     }
-    
+
     for &(name, hex) in COLOR_KEYWORDS {
         if trimmed == name {
             return convert_to_color(hex);
         }
     }
-    
+
     None
 }
 
@@ -148,6 +158,9 @@ pub fn color_to_hex(color: &Color) -> String {
     if color.a == 255 {
         format!("#{:02x}{:02x}{:02x}", color.r, color.g, color.b)
     } else {
-        format!("#{:02x}{:02x}{:02x}{:02x}", color.r, color.g, color.b, color.a)
+        format!(
+            "#{:02x}{:02x}{:02x}{:02x}",
+            color.r, color.g, color.b, color.a
+        )
     }
 }
