@@ -12,20 +12,10 @@ fn is_valid_percentage(part: &str) -> bool {
         return false;
     };
 
-    match val_str {
-        "0" => true,
-        "50" => true,
-        "100" => true,
-        _ => {
-            if !val_str.chars().all(|c| c.is_ascii_digit() || c == '.') {
-                return false;
-            }
-            val_str
-                .parse::<f32>()
-                .map(|val| val >= 0.0 && val <= 100.0)
-                .unwrap_or(false)
-        }
-    }
+    val_str
+        .parse::<f32>()
+        .map(|val| val >= 0.0 && val <= 100.0)
+        .unwrap_or(false)
 }
 
 #[inline]
@@ -54,11 +44,6 @@ fn is_valid_rgb_value(part: &str) -> bool {
     if part.len() > 3 || part.is_empty() {
         return false;
     }
-
-    if !part.chars().all(|c| c.is_ascii_digit()) {
-        return false;
-    }
-
     part.parse::<u8>().is_ok()
 }
 
@@ -68,19 +53,9 @@ fn is_valid_alpha_value(part: &str) -> bool {
         return is_valid_percentage(part);
     }
 
-    match part {
-        "0" | "0.0" => true,
-        "1" | "1.0" => true,
-        "0.5" => true,
-        _ => {
-            if !part.chars().all(|c| c.is_ascii_digit() || c == '.') {
-                return false;
-            }
-            part.parse::<f32>()
-                .map(|val| val >= 0.0 && val <= 1.0)
-                .unwrap_or(false)
-        }
-    }
+    part.parse::<f32>()
+        .map(|val| val >= 0.0 && val <= 1.0)
+        .unwrap_or(false)
 }
 
 #[inline]
