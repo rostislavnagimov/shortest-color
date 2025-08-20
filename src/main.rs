@@ -1,4 +1,5 @@
 use shortest_color::shorten_css_color;
+use shortest_color::print_benchmark_summary;
 
 fn main() {
     let test_cases = vec![
@@ -96,4 +97,6 @@ fn main() {
     if failed == 0 {
         println!("🎉 Все тесты прошли успешно!");
     }
+
+    print_benchmark_summary();
 }
