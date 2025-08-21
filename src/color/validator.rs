@@ -1,80 +1,140 @@
-#[inline]
+use super::keywords::COLOR_KEYWORDS;
+
+const HEX_LOOKUP: [bool; 256] = {
+    let mut lookup = [false; 256];
+    let mut i = b'0';
+    while i <= b'9' {
+        lookup[i as usize] = true;
+        i += 1;
+    }
+    let mut i = b'a';
+    while i <= b'f' {
+        lookup[i as usize] = true;
+        i += 1;
+    }
+    let mut i = b'A';
+    while i <= b'F' {
+        lookup[i as usize] = true;
+        i += 1;
+    }
+    lookup
+};
+
+#[inline(always)]
+fn is_hex_char(c: u8) -> bool {
+    HEX_LOOKUP[c as usize]
+}
+
+#[inline(always)]
 fn is_color_keyword(name: &str) -> bool {
     COLOR_KEYWORDS
         .binary_search_by_key(&name, |&(keyword, _)| keyword)
         .is_ok()
 }
-use super::keywords::COLOR_KEYWORDS;
 
 #[inline]
-fn is_valid_percentage(part: &str) -> bool {
-    let Some(val_str) = part.strip_suffix('%') else {
-        return false;
-    };
-
-    val_str
-        .parse::<f32>()
-        .map(|val| val >= 0.0 && val <= 100.0)
-        .unwrap_or(false)
-}
-
-#[inline]
-fn is_valid_hue(part: &str) -> bool {
-    let numeric_part = match part {
-        s if s.ends_with("deg") => &s[..s.len() - 3],
-        s if s.ends_with("rad") => &s[..s.len() - 3],
-        s if s.ends_with("grad") => &s[..s.len() - 4],
-        s if s.ends_with("turn") => &s[..s.len() - 4],
-        s => s,
-    };
-
-    if numeric_part.is_empty()
-        || !numeric_part
-            .chars()
-            .all(|c| c.is_ascii_digit() || c == '.' || c == '-')
-    {
-        return false;
+fn parse_f32_fast(s: &str) -> Option<f32> {
+    if s.is_empty() || s.len() > 10 {
+        return None;
     }
 
-    numeric_part.parse::<f32>().is_ok()
+    let bytes = s.as_bytes();
+    let mut result = 0.0f32;
+    let mut decimal_pos = None;
+    let mut pos = 0;
+    let negative = bytes[0] == b'-';
+
+    if negative {
+        pos = 1;
+        if s.len() == 1 {
+            return None;
+        }
+    }
+
+    for &b in &bytes[pos..] {
+        match b {
+            b'0'..=b'9' => {
+                let digit = (b - b'0') as f32;
+                if let Some(dp) = decimal_pos {
+                    let power = 10.0f32.powi((pos - dp) as i32);
+                    result += digit / power;
+                } else {
+                    result = result * 10.0 + digit;
+                }
+            }
+            b'.' => {
+                if decimal_pos.is_some() {
+                    return None;
+                }
+                decimal_pos = Some(pos);
+            }
+            _ => return None,
+        }
+        pos += 1;
+    }
+
+    Some(if negative { -result } else { result })
 }
 
-#[inline]
+#[inline(always)]
+fn is_valid_percentage(part: &str) -> bool {
+    match part.strip_suffix('%') {
+        Some(val_str) if !val_str.is_empty() => parse_f32_fast(val_str)
+            .map(|val| val >= 0.0 && val <= 100.0)
+            .unwrap_or(false),
+        _ => false,
+    }
+}
+
+#[inline(always)]
+fn is_valid_hue(part: &str) -> bool {
+    let numeric_part = if part.len() > 4 {
+        if part.ends_with("grad") {
+            &part[..part.len() - 4]
+        } else if part.ends_with("turn") {
+            &part[..part.len() - 4]
+        } else if part.ends_with("deg") || part.ends_with("rad") {
+            &part[..part.len() - 3]
+        } else {
+            part
+        }
+    } else if part.len() > 3 && (part.ends_with("deg") || part.ends_with("rad")) {
+        &part[..part.len() - 3]
+    } else {
+        part
+    };
+
+    !numeric_part.is_empty() && parse_f32_fast(numeric_part).is_some()
+}
+
+#[inline(always)]
 fn is_valid_rgb_value(part: &str) -> bool {
     if part.len() > 3 || part.is_empty() {
         return false;
     }
-    part.parse::<u8>().is_ok()
-}
 
-#[inline]
-fn is_valid_alpha_value(part: &str) -> bool {
-    if part.contains('%') {
-        return is_valid_percentage(part);
-    }
+    let bytes = part.as_bytes();
+    let mut result = 0u16;
 
-    part.parse::<f32>()
-        .map(|val| val >= 0.0 && val <= 1.0)
-        .unwrap_or(false)
-}
-
-#[inline]
-fn parse_function_parts(inner: &str) -> Option<[&str; 4]> {
-    let mut parts = [""; 4];
-    let mut count = 0;
-
-    for part in inner.split(|c| c == ',' || c == ' ') {
-        let trimmed = part.trim();
-        if !trimmed.is_empty() {
-            if count >= 4 {
-                return None;
-            }
-            parts[count] = trimmed;
-            count += 1;
+    for &b in bytes {
+        match b {
+            b'0'..=b'9' => result = result * 10 + (b - b'0') as u16,
+            _ => return false,
         }
     }
 
-    Some(parts)
+    result <= 255
+}
+
+#[inline(always)]
+fn is_valid_alpha_value(part: &str) -> bool {
+    if part.contains('%') {
+        is_valid_percentage(part)
+    } else {
+        parse_f32_fast(part)
+            .map(|val| val >= 0.0 && val <= 1.0)
+            .unwrap_or(false)
+    }
 }
 
 pub fn is_valid_color(color_str: &str) -> bool {
@@ -83,20 +143,27 @@ pub fn is_valid_color(color_str: &str) -> bool {
         return false;
     }
 
-    if let Some(hex_part) = trimmed.strip_prefix('#') {
-        return hex_part.len() == 3
-            || hex_part.len() == 4
-            || hex_part.len() == 6
-            || hex_part.len() == 8 && hex_part.bytes().all(|b| b.is_ascii_hexdigit());
+    let bytes = trimmed.as_bytes();
+
+    if bytes[0] == b'#' {
+        let hex_part = &bytes[1..];
+        let len = hex_part.len();
+
+        if len != 3 && len != 4 && len != 6 && len != 8 {
+            return false;
+        }
+
+        return hex_part.iter().all(|&b| is_hex_char(b));
     }
 
-    let lower = trimmed.to_lowercase();
+    let lower = trimmed.to_ascii_lowercase();
 
-    if let Some(rgb_body) = lower.strip_prefix("rgb") {
-        let (function_body, has_alpha) = if let Some(rgba_body) = rgb_body.strip_prefix('a') {
-            (rgba_body, true)
+    if lower.starts_with("rgb") {
+        let rgb_body = &lower[3..];
+        let (function_body, expected_count) = if rgb_body.starts_with('a') {
+            (&rgb_body[1..], 4)
         } else {
-            (rgb_body, false)
+            (rgb_body, 3)
         };
 
         if !function_body.starts_with('(') || !function_body.ends_with(')') {
@@ -104,36 +171,39 @@ pub fn is_valid_color(color_str: &str) -> bool {
         }
 
         let inner = &function_body[1..function_body.len() - 1];
-        let Some(parts) = parse_function_parts(inner) else {
-            return false;
-        };
+        let parts = inner
+            .split(|c| c == ',' || c == ' ')
+            .filter(|s| !s.trim().is_empty())
+            .map(|s| s.trim());
 
-        let expected_count = if has_alpha { 4 } else { 3 };
-        let actual_count = parts.iter().take_while(|&&s| !s.is_empty()).count();
+        let mut count = 0;
 
-        if actual_count != expected_count {
-            return false;
+        for part in parts {
+            count += 1;
+            if count > expected_count {
+                return false;
+            }
+
+            if count <= 3 {
+                if !is_valid_rgb_value(part) {
+                    return false;
+                }
+            } else if count == 4 {
+                if !is_valid_alpha_value(part) {
+                    return false;
+                }
+            }
         }
 
-        if !is_valid_rgb_value(parts[0])
-            || !is_valid_rgb_value(parts[1])
-            || !is_valid_rgb_value(parts[2])
-        {
-            return false;
-        }
-
-        if has_alpha && !is_valid_alpha_value(parts[3]) {
-            return false;
-        }
-
-        return true;
+        return count == expected_count;
     }
 
-    if let Some(hsl_body) = lower.strip_prefix("hsl") {
-        let (function_body, has_alpha) = if let Some(hsla_body) = hsl_body.strip_prefix('a') {
-            (hsla_body, true)
+    if lower.starts_with("hsl") {
+        let hsl_body = &lower[3..];
+        let (function_body, expected_count) = if hsl_body.starts_with('a') {
+            (&hsl_body[1..], 4)
         } else {
-            (hsl_body, false)
+            (hsl_body, 3)
         };
 
         if !function_body.starts_with('(') || !function_body.ends_with(')') {
@@ -141,29 +211,39 @@ pub fn is_valid_color(color_str: &str) -> bool {
         }
 
         let inner = &function_body[1..function_body.len() - 1];
-        let Some(parts) = parse_function_parts(inner) else {
-            return false;
-        };
+        let mut parts = inner
+            .split(|c| c == ',' || c == ' ')
+            .filter(|s| !s.trim().is_empty())
+            .map(|s| s.trim());
 
-        let expected_count = if has_alpha { 4 } else { 3 };
-        let actual_count = parts.iter().take_while(|&&s| !s.is_empty()).count();
+        if let Some(h) = parts.next() {
+            if !is_valid_hue(h) {
+                return false;
+            }
 
-        if actual_count != expected_count {
-            return false;
+            if let Some(s) = parts.next() {
+                if !is_valid_percentage(s) {
+                    return false;
+                }
+
+                if let Some(l) = parts.next() {
+                    if !is_valid_percentage(l) {
+                        return false;
+                    }
+
+                    if expected_count == 4 {
+                        if let Some(a) = parts.next() {
+                            return is_valid_alpha_value(a) && parts.next().is_none();
+                        }
+                        return false;
+                    } else {
+                        return parts.next().is_none();
+                    }
+                }
+            }
         }
 
-        if !is_valid_hue(parts[0])
-            || !is_valid_percentage(parts[1])
-            || !is_valid_percentage(parts[2])
-        {
-            return false;
-        }
-
-        if has_alpha && !is_valid_alpha_value(parts[3]) {
-            return false;
-        }
-
-        return true;
+        return false;
     }
 
     is_color_keyword(&lower)

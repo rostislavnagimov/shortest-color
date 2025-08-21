@@ -1,12 +1,58 @@
 use super::keywords::COLOR_KEYWORDS;
 use super::model::Color;
 
+const HEX_VALUES: [u8; 256] = {
+    let mut values = [255; 256];
+    let mut i = 0;
+    while i < 10 {
+        values[(b'0' + i) as usize] = i;
+        i += 1;
+    }
+    let mut i = 0;
+    while i < 6 {
+        values[(b'a' + i) as usize] = 10 + i;
+        values[(b'A' + i) as usize] = 10 + i;
+        i += 1;
+    }
+    values
+};
+
+#[inline(always)]
+fn hex_char_to_value(c: u8) -> u8 {
+    HEX_VALUES[c as usize]
+}
+
+#[inline(always)]
+fn parse_hex_pair(bytes: &[u8], pos: usize) -> Option<u8> {
+    if pos + 1 >= bytes.len() {
+        return None;
+    }
+    let high = hex_char_to_value(bytes[pos]);
+    let low = hex_char_to_value(bytes[pos + 1]);
+    if high > 15 || low > 15 {
+        None
+    } else {
+        Some(high << 4 | low)
+    }
+}
+
+#[inline(always)]
+fn parse_hex_single(byte: u8) -> Option<u8> {
+    let val = hex_char_to_value(byte);
+    if val > 15 {
+        None
+    } else {
+        Some(val * 17)
+    }
+}
+
+#[inline(always)]
 fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
-    let s = s / 100.0;
-    let l = l / 100.0;
+    let s = s * 0.01;
+    let l = l * 0.01;
     let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
     let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
-    let m = l - c / 2.0;
+    let m = l - c * 0.5;
 
     let (r_prime, g_prime, b_prime) = if h < 60.0 {
         (c, x, 0.0)
@@ -23,135 +69,188 @@ fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
     };
 
     (
-        ((r_prime + m) * 255.0).round() as u8,
-        ((g_prime + m) * 255.0).round() as u8,
-        ((b_prime + m) * 255.0).round() as u8,
+        ((r_prime + m) * 255.0) as u8,
+        ((g_prime + m) * 255.0) as u8,
+        ((b_prime + m) * 255.0) as u8,
     )
 }
 
-pub fn convert_to_color(color_str: &str) -> Option<Color> {
-    let trimmed = color_str.trim().to_lowercase();
+#[inline]
+fn parse_numeric(s: &str) -> Option<f32> {
+    if s.is_empty() || s.len() > 10 {
+        return None;
+    }
 
-    if let Some(hex) = trimmed.strip_prefix('#') {
-        let (r, g, b, a) = match hex.len() {
-            3 => (
-                u8::from_str_radix(&hex[0..1].repeat(2), 16).ok()?,
-                u8::from_str_radix(&hex[1..2].repeat(2), 16).ok()?,
-                u8::from_str_radix(&hex[2..3].repeat(2), 16).ok()?,
-                255,
-            ),
-            4 => (
-                u8::from_str_radix(&hex[0..1].repeat(2), 16).ok()?,
-                u8::from_str_radix(&hex[1..2].repeat(2), 16).ok()?,
-                u8::from_str_radix(&hex[2..3].repeat(2), 16).ok()?,
-                u8::from_str_radix(&hex[3..4].repeat(2), 16).ok()?,
-            ),
-            6 => (
-                u8::from_str_radix(&hex[0..2], 16).ok()?,
-                u8::from_str_radix(&hex[2..4], 16).ok()?,
-                u8::from_str_radix(&hex[4..6], 16).ok()?,
-                255,
-            ),
-            8 => (
-                u8::from_str_radix(&hex[0..2], 16).ok()?,
-                u8::from_str_radix(&hex[2..4], 16).ok()?,
-                u8::from_str_radix(&hex[4..6], 16).ok()?,
-                u8::from_str_radix(&hex[6..8], 16).ok()?,
-            ),
+    let bytes = s.as_bytes();
+    let mut result = 0.0f32;
+    let mut decimal_pos = None;
+    let mut pos = 0;
+    let negative = bytes[0] == b'-';
+
+    if negative {
+        pos = 1;
+        if s.len() == 1 {
+            return None;
+        }
+    }
+
+    for &b in &bytes[pos..] {
+        match b {
+            b'0'..=b'9' => {
+                let digit = (b - b'0') as f32;
+                if let Some(dp) = decimal_pos {
+                    let power = 10.0f32.powi((pos - dp) as i32);
+                    result += digit / power;
+                } else {
+                    result = result * 10.0 + digit;
+                }
+            }
+            b'.' => {
+                if decimal_pos.is_some() {
+                    return None;
+                }
+                decimal_pos = Some(pos);
+            }
             _ => return None,
-        };
-        return Some(Color { r, g, b, a });
+        }
+        pos += 1;
     }
 
-    if let Some(body) = trimmed
-        .strip_prefix("rgb")
-        .and_then(|s| s.strip_suffix(')'))
-    {
-        let (body, has_alpha) = if let Some(body_a) = body.strip_prefix('a') {
-            (body_a, true)
+    Some(if negative { -result } else { result })
+}
+
+#[inline]
+fn split_function_values(inner: &str) -> Vec<&str> {
+    inner
+        .split(|c| c == ',' || c == ' ')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+pub fn convert_to_color(color_str: &str) -> Option<Color> {
+    let trimmed = color_str.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let bytes = trimmed.as_bytes();
+
+    if bytes[0] == b'#' {
+        let hex_bytes = &bytes[1..];
+        let len = hex_bytes.len();
+
+        return match len {
+            3 => Some(Color {
+                r: parse_hex_single(hex_bytes[0])?,
+                g: parse_hex_single(hex_bytes[1])?,
+                b: parse_hex_single(hex_bytes[2])?,
+                a: 255,
+            }),
+            4 => Some(Color {
+                r: parse_hex_single(hex_bytes[0])?,
+                g: parse_hex_single(hex_bytes[1])?,
+                b: parse_hex_single(hex_bytes[2])?,
+                a: parse_hex_single(hex_bytes[3])?,
+            }),
+            6 => Some(Color {
+                r: parse_hex_pair(hex_bytes, 0)?,
+                g: parse_hex_pair(hex_bytes, 2)?,
+                b: parse_hex_pair(hex_bytes, 4)?,
+                a: 255,
+            }),
+            8 => Some(Color {
+                r: parse_hex_pair(hex_bytes, 0)?,
+                g: parse_hex_pair(hex_bytes, 2)?,
+                b: parse_hex_pair(hex_bytes, 4)?,
+                a: parse_hex_pair(hex_bytes, 6)?,
+            }),
+            _ => None,
+        };
+    }
+
+    let lower = trimmed.to_ascii_lowercase();
+
+    if lower.starts_with("rgb") {
+        let rgb_body = &lower[3..];
+        let (body, has_alpha) = if rgb_body.starts_with('a') {
+            (&rgb_body[1..], true)
         } else {
-            (body, false)
+            (rgb_body, false)
         };
 
-        let Some(inner) = body.strip_prefix('(') else {
+        if !body.starts_with('(') || !body.ends_with(')') {
             return None;
-        };
-        let parts: Vec<&str> = inner
-            .split(|c| c == ',' || c == ' ')
-            .filter(|s| !s.is_empty())
-            .collect();
+        }
+
+        let inner = &body[1..body.len() - 1];
+        let parts = split_function_values(inner);
 
         if has_alpha && parts.len() == 4 {
-            let r = parts[0].parse().ok()?;
-            let g = parts[1].parse().ok()?;
-            let b = parts[2].parse().ok()?;
-            let a_f32 = parts[3].trim_end_matches('%').parse::<f32>().ok()?;
-            let a = if parts[3].contains('%') {
-                (a_f32 / 100.0 * 255.0).round() as u8
+            let r = parse_numeric(parts[0])? as u8;
+            let g = parse_numeric(parts[1])? as u8;
+            let b = parse_numeric(parts[2])? as u8;
+            let a_str = parts[3];
+            let a_f32 = parse_numeric(a_str.trim_end_matches('%'))?;
+            let a = if a_str.contains('%') {
+                (a_f32 * 2.55).round() as u8
             } else {
                 (a_f32 * 255.0).round() as u8
             };
             return Some(Color { r, g, b, a });
         } else if !has_alpha && parts.len() == 3 {
-            let r = parts[0].parse().ok()?;
-            let g = parts[1].parse().ok()?;
-            let b = parts[2].parse().ok()?;
+            let r = parse_numeric(parts[0])? as u8;
+            let g = parse_numeric(parts[1])? as u8;
+            let b = parse_numeric(parts[2])? as u8;
             return Some(Color { r, g, b, a: 255 });
         }
     }
 
-    if let Some(body) = trimmed
-        .strip_prefix("hsl")
-        .and_then(|s| s.strip_suffix(')'))
-    {
-        let (body, has_alpha) = if let Some(body_a) = body.strip_prefix('a') {
-            (body_a, true)
+    if lower.starts_with("hsl") {
+        let hsl_body = &lower[3..];
+        let (body, has_alpha) = if hsl_body.starts_with('a') {
+            (&hsl_body[1..], true)
         } else {
-            (body, false)
+            (hsl_body, false)
         };
 
-        let Some(inner) = body.strip_prefix('(') else {
+        if !body.starts_with('(') || !body.ends_with(')') {
             return None;
-        };
-        let parts: Vec<&str> = inner
-            .split(|c| c == ',' || c == ' ')
-            .filter(|s| !s.is_empty())
-            .collect();
+        }
+
+        let inner = &body[1..body.len() - 1];
+        let parts = split_function_values(inner);
 
         if has_alpha && parts.len() == 4 {
-            let h = parts[0]
-                .trim_end_matches(|c: char| !c.is_numeric() && c != '.')
-                .parse()
-                .ok()?;
-            let s = parts[1].trim_end_matches('%').parse().ok()?;
-            let l = parts[2].trim_end_matches('%').parse().ok()?;
+            let h_str =
+                parts[0].trim_end_matches(|c: char| !c.is_numeric() && c != '.' && c != '-');
+            let h = parse_numeric(h_str)?;
+            let s = parse_numeric(parts[1].trim_end_matches('%'))?;
+            let l = parse_numeric(parts[2].trim_end_matches('%'))?;
             let (r, g, b) = hsl_to_rgb(h, s, l);
-            let a_f32 = parts[3].trim_end_matches('%').parse::<f32>().ok()?;
-            let a = if parts[3].contains('%') {
-                (a_f32 / 100.0 * 255.0).round() as u8
+            let a_str = parts[3];
+            let a_f32 = parse_numeric(a_str.trim_end_matches('%'))?;
+            let a = if a_str.contains('%') {
+                (a_f32 * 2.55).round() as u8
             } else {
                 (a_f32 * 255.0).round() as u8
             };
             return Some(Color { r, g, b, a });
         } else if !has_alpha && parts.len() == 3 {
-            let h = parts[0]
-                .trim_end_matches(|c: char| !c.is_numeric() && c != '.')
-                .parse()
-                .ok()?;
-            let s = parts[1].trim_end_matches('%').parse().ok()?;
-            let l = parts[2].trim_end_matches('%').parse().ok()?;
+            let h_str =
+                parts[0].trim_end_matches(|c: char| !c.is_numeric() && c != '.' && c != '-');
+            let h = parse_numeric(h_str)?;
+            let s = parse_numeric(parts[1].trim_end_matches('%'))?;
+            let l = parse_numeric(parts[2].trim_end_matches('%'))?;
             let (r, g, b) = hsl_to_rgb(h, s, l);
             return Some(Color { r, g, b, a: 255 });
         }
     }
 
-    for &(name, hex) in COLOR_KEYWORDS {
-        if trimmed == name {
-            return convert_to_color(hex);
-        }
-    }
-
-    None
+    COLOR_KEYWORDS
+        .binary_search_by_key(&&*lower, |&(name, _)| name)
+        .ok()
+        .and_then(|idx| convert_to_color(COLOR_KEYWORDS[idx].1))
 }
 
 pub fn color_to_hex(color: &Color) -> String {

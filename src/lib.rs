@@ -1,146 +1,100 @@
 pub mod color;
 pub use color::{convert_to_color, is_valid_color, shorten_color};
 
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-static STATS: Mutex<BenchStats> = Mutex::new(BenchStats::new());
+static VALIDATION_TIME: AtomicU64 = AtomicU64::new(0);
+static CONVERSION_TIME: AtomicU64 = AtomicU64::new(0);
+static SHORTENING_TIME: AtomicU64 = AtomicU64::new(0);
+static TOTAL_TIME: AtomicU64 = AtomicU64::new(0);
+static MEASUREMENT_COUNT: AtomicU64 = AtomicU64::new(0);
 
-struct BenchStats {
-    validation_times: Vec<Duration>,
-    conversion_times: Vec<Duration>,
-    shortening_times: Vec<Duration>,
-    total_times: Vec<Duration>,
+fn duration_to_nanos(duration: Duration) -> u64 {
+    duration.as_nanos() as u64
 }
 
-impl BenchStats {
-    const fn new() -> Self {
-        Self {
-            validation_times: Vec::new(),
-            conversion_times: Vec::new(),
-            shortening_times: Vec::new(),
-            total_times: Vec::new(),
-        }
-    }
+fn nanos_to_duration(nanos: u64) -> Duration {
+    Duration::from_nanos(nanos)
+}
 
-    fn add_measurement(
-        &mut self,
-        validation: Duration,
-        conversion: Duration,
-        shortening: Option<Duration>,
-        total: Duration,
-    ) {
-        self.validation_times.push(validation);
-        self.conversion_times.push(conversion);
-        if let Some(s) = shortening {
-            self.shortening_times.push(s);
-        }
-        self.total_times.push(total);
-    }
-
-    fn print_averages(&self) {
-        if self.validation_times.is_empty() {
-            println!("No measurements recorded");
-            return;
-        }
-
-        let avg_validation = self.average(&self.validation_times);
-        let avg_conversion = self.average(&self.conversion_times);
-        let avg_shortening = if !self.shortening_times.is_empty() {
-            Some(self.average(&self.shortening_times))
-        } else {
-            None
-        };
-        let avg_total = self.average(&self.total_times);
-
-        println!("\n📊 СРЕДНЯЯ ПРОИЗВОДИТЕЛЬНОСТЬ:");
-        println!("   Валидация:   {:?}", avg_validation);
-        println!("   Конверсия:   {:?}", avg_conversion);
-        if let Some(avg_short) = avg_shortening {
-            println!("   Сокращение:  {:?}", avg_short);
-        }
-        println!("   Общее время: {:?}", avg_total);
-        println!("   Измерений:   {}", self.validation_times.len());
-    }
-
-    fn average(&self, times: &[Duration]) -> Duration {
-        if times.is_empty() {
-            return Duration::from_nanos(0);
-        }
-        
-        let total_nanos: u128 = times.iter().map(|d| d.as_nanos()).sum();
-        Duration::from_nanos((total_nanos / times.len() as u128) as u64)
-    }
+#[inline(always)]
+fn add_time(atomic: &AtomicU64, duration: Duration) {
+    atomic.fetch_add(duration_to_nanos(duration), Ordering::Relaxed);
 }
 
 pub fn shorten_css_color(color_str: &str) -> String {
     let start = Instant::now();
-    
+
     let validation_start = Instant::now();
     let is_valid = is_valid_color(color_str);
     let validation_time = validation_start.elapsed();
-    
+
     if !is_valid {
         let total_time = start.elapsed();
-        println!(
-            "shorten_css_color('{}') -> '{}' | validation: {:?}, total: {:?}",
-            color_str, color_str, validation_time, total_time
-        );
-        
-        if let Ok(mut stats) = STATS.lock() {
-            stats.add_measurement(validation_time, Duration::from_nanos(0), None, total_time);
-        }
-        
+
+        add_time(&VALIDATION_TIME, validation_time);
+        add_time(&TOTAL_TIME, total_time);
+        MEASUREMENT_COUNT.fetch_add(1, Ordering::Relaxed);
+
         return color_str.to_string();
     }
-    
+
     let conversion_start = Instant::now();
-    let result = if let Some(color) = convert_to_color(color_str) {
+    if let Some(color) = convert_to_color(color_str) {
         let conversion_time = conversion_start.elapsed();
+
         let shortening_start = Instant::now();
         let shortened = shorten_color(&color);
         let shortening_time = shortening_start.elapsed();
+
         let total_time = start.elapsed();
-        
-        println!(
-            "shorten_css_color('{}') -> '{}' | validation: {:?}, conversion: {:?}, shortening: {:?}, total: {:?}", 
-            color_str, shortened, validation_time, conversion_time, shortening_time, total_time
-        );
-        
-        if let Ok(mut stats) = STATS.lock() {
-            stats.add_measurement(validation_time, conversion_time, Some(shortening_time), total_time);
-        }
-        
+
+        add_time(&VALIDATION_TIME, validation_time);
+        add_time(&CONVERSION_TIME, conversion_time);
+        add_time(&SHORTENING_TIME, shortening_time);
+        add_time(&TOTAL_TIME, total_time);
+        MEASUREMENT_COUNT.fetch_add(1, Ordering::Relaxed);
+
         shortened
     } else {
         let conversion_time = conversion_start.elapsed();
         let total_time = start.elapsed();
-        
-        println!(
-            "shorten_css_color('{}') -> '{}' | validation: {:?}, conversion: {:?} (failed), total: {:?}", 
-            color_str, color_str, validation_time, conversion_time, total_time
-        );
-        
-        if let Ok(mut stats) = STATS.lock() {
-            stats.add_measurement(validation_time, conversion_time, None, total_time);
-        }
-        
+
+        add_time(&VALIDATION_TIME, validation_time);
+        add_time(&CONVERSION_TIME, conversion_time);
+        add_time(&TOTAL_TIME, total_time);
+        MEASUREMENT_COUNT.fetch_add(1, Ordering::Relaxed);
+
         color_str.to_string()
-    };
-    
-    result
+    }
 }
 
 pub fn print_benchmark_summary() {
-    if let Ok(stats) = STATS.lock() {
-        stats.print_averages();
-    } else {
-        println!("Failed to acquire stats lock for summary");
+    let count = MEASUREMENT_COUNT.load(Ordering::Relaxed);
+
+    if count == 0 {
+        println!("No measurements recorded");
+        return;
     }
+
+    let avg_validation = nanos_to_duration(VALIDATION_TIME.load(Ordering::Relaxed) / count);
+    let avg_conversion = nanos_to_duration(CONVERSION_TIME.load(Ordering::Relaxed) / count);
+    let avg_shortening = nanos_to_duration(SHORTENING_TIME.load(Ordering::Relaxed) / count);
+    let avg_total = nanos_to_duration(TOTAL_TIME.load(Ordering::Relaxed) / count);
+
+    println!("\n📊 СРЕДНЯЯ ПРОИЗВОДИТЕЛЬНОСТЬ:");
+    println!("   Валидация:   {:?}", avg_validation);
+    println!("   Конверсия:   {:?}", avg_conversion);
+    println!("   Сокращение:  {:?}", avg_shortening);
+    println!("   Общее время: {:?}", avg_total);
+    println!("   Измерений:   {}", count);
 }
 
 pub fn reset_benchmark_stats() {
-    if let Ok(mut stats) = STATS.lock() {
-        *stats = BenchStats::new();
-    }
+    VALIDATION_TIME.store(0, Ordering::Relaxed);
+    CONVERSION_TIME.store(0, Ordering::Relaxed);
+    SHORTENING_TIME.store(0, Ordering::Relaxed);
+    TOTAL_TIME.store(0, Ordering::Relaxed);
+    MEASUREMENT_COUNT.store(0, Ordering::Relaxed);
 }
