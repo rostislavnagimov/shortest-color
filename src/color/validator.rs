@@ -1,170 +1,234 @@
-#[inline]
-fn is_color_keyword(name: &str) -> bool {
-    COLOR_KEYWORDS
-        .binary_search_by_key(&name, |&(keyword, _)| keyword)
-        .is_ok()
-}
 use super::keywords::COLOR_KEYWORDS;
 
-#[inline]
-fn is_valid_percentage(part: &str) -> bool {
-    let Some(val_str) = part.strip_suffix('%') else {
-        return false;
-    };
+const HEX_LOOKUP: [bool; 256] = {
+    let mut lookup = [false; 256];
+    let mut i = b'0';
+    while i <= b'9' {
+        lookup[i as usize] = true;
+        i += 1;
+    }
+    let mut i = b'a';
+    while i <= b'f' {
+        lookup[i as usize] = true;
+        i += 1;
+    }
+    lookup
+};
 
-    val_str
-        .parse::<f32>()
-        .map(|val| val >= 0.0 && val <= 100.0)
-        .unwrap_or(false)
+#[inline(always)]
+fn is_hex_char(c: u8) -> bool {
+    HEX_LOOKUP[c as usize]
 }
 
 #[inline]
-fn is_valid_hue(part: &str) -> bool {
-    let numeric_part = match part {
-        s if s.ends_with("deg") => &s[..s.len() - 3],
-        s if s.ends_with("rad") => &s[..s.len() - 3],
-        s if s.ends_with("grad") => &s[..s.len() - 4],
-        s if s.ends_with("turn") => &s[..s.len() - 4],
-        s => s,
-    };
-
-    if numeric_part.is_empty()
-        || !numeric_part
-            .chars()
-            .all(|c| c.is_ascii_digit() || c == '.' || c == '-')
-    {
-        return false;
+fn parse_f32_optimized(s: &str) -> Option<f32> {
+    if s.is_empty() || s.len() > 10 {
+        return None;
     }
 
-    numeric_part.parse::<f32>().is_ok()
-}
+    let bytes = s.as_bytes();
+    let mut result = 0.0f32;
+    let mut decimal_divisor = 0.0f32;
+    let mut pos = 0;
+    let negative = bytes[0] == b'-';
 
-#[inline]
-fn is_valid_rgb_value(part: &str) -> bool {
-    if part.len() > 3 || part.is_empty() {
-        return false;
-    }
-    part.parse::<u8>().is_ok()
-}
-
-#[inline]
-fn is_valid_alpha_value(part: &str) -> bool {
-    if part.contains('%') {
-        return is_valid_percentage(part);
-    }
-
-    part.parse::<f32>()
-        .map(|val| val >= 0.0 && val <= 1.0)
-        .unwrap_or(false)
-}
-
-#[inline]
-fn parse_function_parts(inner: &str) -> Option<[&str; 4]> {
-    let mut parts = [""; 4];
-    let mut count = 0;
-
-    for part in inner.split(|c| c == ',' || c == ' ') {
-        let trimmed = part.trim();
-        if !trimmed.is_empty() {
-            if count >= 4 {
-                return None;
-            }
-            parts[count] = trimmed;
-            count += 1;
+    if negative {
+        pos = 1;
+        if s.len() == 1 {
+            return None;
         }
     }
 
-    Some(parts)
+    for &b in &bytes[pos..] {
+        match b {
+            b'0'..=b'9' => {
+                let digit = (b - b'0') as f32;
+                if decimal_divisor > 0.0 {
+                    decimal_divisor *= 10.0;
+                    result += digit / decimal_divisor;
+                } else {
+                    result = result * 10.0 + digit;
+                }
+            }
+            b'.' => {
+                if decimal_divisor > 0.0 {
+                    return None;
+                }
+                decimal_divisor = 1.0;
+            }
+            _ => return None,
+        }
+    }
+
+    Some(if negative { -result } else { result })
 }
 
-pub fn is_valid_color(color_str: &str) -> bool {
-    let trimmed = color_str.trim();
-    if trimmed.is_empty() {
+#[inline(always)]
+fn validate_rgb_parts(inner: &str, has_alpha: bool) -> bool {
+    let parts: Vec<&str> = inner
+        .split(|c| c == ',' || c == ' ')
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.trim())
+        .collect();
+
+    let expected = if has_alpha { 4 } else { 3 };
+    if parts.len() != expected {
         return false;
     }
 
-    if let Some(hex_part) = trimmed.strip_prefix('#') {
-        return hex_part.len() == 3
-            || hex_part.len() == 4
-            || hex_part.len() == 6
-            || hex_part.len() == 8 && hex_part.bytes().all(|b| b.is_ascii_hexdigit());
+    for (i, &part) in parts.iter().enumerate() {
+        if i < 3 {
+            if let Some(val) = parse_f32_optimized(part) {
+                if val < 0.0 || val > if part.contains('.') { 255.9 } else { 255.0 } {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        } else {
+            if part.contains('%') {
+                if let Some(val_str) = part.strip_suffix('%') {
+                    if let Some(val) = parse_f32_optimized(val_str) {
+                        if val < 0.0 || val > 100.0 {
+                            return false;
+                        }
+                    } else {
+                        return false;
+                    }
+                } else {
+                    return false;
+                }
+            } else {
+                if let Some(val) = parse_f32_optimized(part) {
+                    if val < 0.0 || val > 1.0 {
+                        return false;
+                    }
+                } else {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
+#[inline(always)]
+fn validate_hsl_parts(inner: &str, has_alpha: bool) -> bool {
+    let parts: Vec<&str> = inner
+        .split(|c| c == ',' || c == ' ')
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.trim())
+        .collect();
+
+    let expected = if has_alpha { 4 } else { 3 };
+    if parts.len() != expected {
+        return false;
     }
 
-    let lower = trimmed.to_lowercase();
+    for (i, &part) in parts.iter().enumerate() {
+        match i {
+            0 => {
+                let numeric_part = if let Some(stripped) = part.strip_suffix("grad") {
+                    stripped
+                } else if let Some(stripped) = part.strip_suffix("turn") {
+                    stripped
+                } else if let Some(stripped) = part.strip_suffix("deg") {
+                    stripped
+                } else if let Some(stripped) = part.strip_suffix("rad") {
+                    stripped
+                } else {
+                    part
+                };
+                if numeric_part.is_empty() || parse_f32_optimized(numeric_part).is_none() {
+                    return false;
+                }
+            }
+            1 | 2 => {
+                if let Some(val_str) = part.strip_suffix('%') {
+                    if let Some(val) = parse_f32_optimized(val_str) {
+                        if val < 0.0 || val > 100.0 {
+                            return false;
+                        }
+                    } else {
+                        return false;
+                    }
+                } else {
+                    return false;
+                }
+            }
+            3 => {
+                if part.contains('%') {
+                    if let Some(val_str) = part.strip_suffix('%') {
+                        if let Some(val) = parse_f32_optimized(val_str) {
+                            if val < 0.0 || val > 100.0 {
+                                return false;
+                            }
+                        } else {
+                            return false;
+                        }
+                    } else {
+                        return false;
+                    }
+                } else {
+                    if let Some(val) = parse_f32_optimized(part) {
+                        if val < 0.0 || val > 1.0 {
+                            return false;
+                        }
+                    } else {
+                        return false;
+                    }
+                }
+            }
+            _ => return false,
+        }
+    }
+    true
+}
 
-    if let Some(rgb_body) = lower.strip_prefix("rgb") {
-        let (function_body, has_alpha) = if let Some(rgba_body) = rgb_body.strip_prefix('a') {
-            (rgba_body, true)
+pub fn is_valid_color(trimmed_lower: &str) -> bool {
+    if trimmed_lower.is_empty() {
+        return false;
+    }
+
+    let bytes = trimmed_lower.as_bytes();
+
+    if bytes[0] == b'#' {
+        let hex_part = &bytes[1..];
+        let len = hex_part.len();
+        return matches!(len, 6 | 8) && hex_part.iter().all(|&b| is_hex_char(b));
+    }
+
+    if let Some(rgb_body) = trimmed_lower.strip_prefix("rgb") {
+        let (function_body, has_alpha) = if let Some(body) = rgb_body.strip_prefix('a') {
+            (body, true)
         } else {
             (rgb_body, false)
         };
 
-        if !function_body.starts_with('(') || !function_body.ends_with(')') {
+        if function_body.len() < 2 || !function_body.starts_with('(') || !function_body.ends_with(')') {
             return false;
         }
 
         let inner = &function_body[1..function_body.len() - 1];
-        let Some(parts) = parse_function_parts(inner) else {
-            return false;
-        };
-
-        let expected_count = if has_alpha { 4 } else { 3 };
-        let actual_count = parts.iter().take_while(|&&s| !s.is_empty()).count();
-
-        if actual_count != expected_count {
-            return false;
-        }
-
-        if !is_valid_rgb_value(parts[0])
-            || !is_valid_rgb_value(parts[1])
-            || !is_valid_rgb_value(parts[2])
-        {
-            return false;
-        }
-
-        if has_alpha && !is_valid_alpha_value(parts[3]) {
-            return false;
-        }
-
-        return true;
+        return validate_rgb_parts(inner, has_alpha);
     }
 
-    if let Some(hsl_body) = lower.strip_prefix("hsl") {
-        let (function_body, has_alpha) = if let Some(hsla_body) = hsl_body.strip_prefix('a') {
-            (hsla_body, true)
+    if let Some(hsl_body) = trimmed_lower.strip_prefix("hsl") {
+        let (function_body, has_alpha) = if let Some(body) = hsl_body.strip_prefix('a') {
+            (body, true)
         } else {
             (hsl_body, false)
         };
 
-        if !function_body.starts_with('(') || !function_body.ends_with(')') {
+        if function_body.len() < 2 || !function_body.starts_with('(') || !function_body.ends_with(')') {
             return false;
         }
 
         let inner = &function_body[1..function_body.len() - 1];
-        let Some(parts) = parse_function_parts(inner) else {
-            return false;
-        };
-
-        let expected_count = if has_alpha { 4 } else { 3 };
-        let actual_count = parts.iter().take_while(|&&s| !s.is_empty()).count();
-
-        if actual_count != expected_count {
-            return false;
-        }
-
-        if !is_valid_hue(parts[0])
-            || !is_valid_percentage(parts[1])
-            || !is_valid_percentage(parts[2])
-        {
-            return false;
-        }
-
-        if has_alpha && !is_valid_alpha_value(parts[3]) {
-            return false;
-        }
-
-        return true;
+        return validate_hsl_parts(inner, has_alpha);
     }
 
-    is_color_keyword(&lower)
+    COLOR_KEYWORDS
+        .binary_search_by_key(&trimmed_lower, |&(keyword, _)| keyword)
+        .is_ok()
 }
