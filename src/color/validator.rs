@@ -88,42 +88,42 @@ fn is_valid_percentage(part: &str) -> bool {
 
 #[inline(always)]
 fn is_valid_hue(part: &str) -> bool {
-    let numeric_part = if part.len() > 4 {
-        if part.ends_with("grad") {
-            &part[..part.len() - 4]
-        } else if part.ends_with("turn") {
-            &part[..part.len() - 4]
-        } else if part.ends_with("deg") || part.ends_with("rad") {
-            &part[..part.len() - 3]
-        } else {
-            part
-        }
-    } else if part.len() > 3 && (part.ends_with("deg") || part.ends_with("rad")) {
+    if part.is_empty() {
+        return false;
+    }
+    
+    let numeric_part = if part.ends_with("grad") {
+        &part[..part.len() - 4]
+    } else if part.ends_with("turn") {
+        &part[..part.len() - 4]
+    } else if part.ends_with("deg") {
+        &part[..part.len() - 3]
+    } else if part.ends_with("rad") {
         &part[..part.len() - 3]
     } else {
         part
     };
 
+    // Важно: для hue любое числовое значение валидно (включая 400, 720, -90, etc.)
+    // так как углы нормализуются по модулю 360
     !numeric_part.is_empty() && parse_f32_fast(numeric_part).is_some()
 }
 
 #[inline(always)]
 fn is_valid_rgb_value(part: &str) -> bool {
-    if part.len() > 3 || part.is_empty() {
-        return false;
-    }
-
-    let bytes = part.as_bytes();
-    let mut result = 0u16;
-
-    for &b in bytes {
-        match b {
-            b'0'..=b'9' => result = result * 10 + (b - b'0') as u16,
-            _ => return false,
+    if let Some(val) = parse_f32_fast(part) {
+        if val < 0.0 {
+            return false;
         }
+        
+        if part.contains('.') {
+            val <= 255.9
+        } else {
+            val <= 255.0
+        }
+    } else {
+        false
     }
-
-    result <= 255
 }
 
 #[inline(always)]

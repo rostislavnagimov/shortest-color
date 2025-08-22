@@ -69,9 +69,9 @@ fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
     };
 
     (
-        ((r_prime + m) * 255.0) as u8,
-        ((g_prime + m) * 255.0) as u8,
-        ((b_prime + m) * 255.0) as u8,
+        ((r_prime + m) * 255.0).round() as u8,
+        ((g_prime + m) * 255.0).round() as u8,
+        ((b_prime + m) * 255.0).round() as u8,
     )
 }
 
@@ -126,6 +126,23 @@ fn split_function_values(inner: &str) -> Vec<&str> {
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
         .collect()
+}
+
+#[inline]
+fn normalize_hue(h: f32, unit: &str) -> f32 {
+    let normalized = match unit {
+        "deg" | "" => h,
+        "rad" => h * 180.0 / std::f32::consts::PI,
+        "grad" => h * 0.9,
+        "turn" => h * 360.0,
+        _ => h,
+    };
+    
+    let mut result = normalized % 360.0;
+    if result < 0.0 {
+        result += 360.0;
+    }
+    result
 }
 
 pub fn convert_to_color(color_str: &str) -> Option<Color> {
@@ -187,9 +204,9 @@ pub fn convert_to_color(color_str: &str) -> Option<Color> {
         let parts = split_function_values(inner);
 
         if has_alpha && parts.len() == 4 {
-            let r = parse_numeric(parts[0])? as u8;
-            let g = parse_numeric(parts[1])? as u8;
-            let b = parse_numeric(parts[2])? as u8;
+            let r = parse_numeric(parts[0])?.round().max(0.0).min(255.0) as u8;
+            let g = parse_numeric(parts[1])?.round().max(0.0).min(255.0) as u8;
+            let b = parse_numeric(parts[2])?.round().max(0.0).min(255.0) as u8;
             let a_str = parts[3];
             let a_f32 = parse_numeric(a_str.trim_end_matches('%'))?;
             let a = if a_str.contains('%') {
@@ -199,9 +216,9 @@ pub fn convert_to_color(color_str: &str) -> Option<Color> {
             };
             return Some(Color { r, g, b, a });
         } else if !has_alpha && parts.len() == 3 {
-            let r = parse_numeric(parts[0])? as u8;
-            let g = parse_numeric(parts[1])? as u8;
-            let b = parse_numeric(parts[2])? as u8;
+            let r = parse_numeric(parts[0])?.round().max(0.0).min(255.0) as u8;
+            let g = parse_numeric(parts[1])?.round().max(0.0).min(255.0) as u8;
+            let b = parse_numeric(parts[2])?.round().max(0.0).min(255.0) as u8;
             return Some(Color { r, g, b, a: 255 });
         }
     }
@@ -222,9 +239,21 @@ pub fn convert_to_color(color_str: &str) -> Option<Color> {
         let parts = split_function_values(inner);
 
         if has_alpha && parts.len() == 4 {
-            let h_str =
-                parts[0].trim_end_matches(|c: char| !c.is_numeric() && c != '.' && c != '-');
-            let h = parse_numeric(h_str)?;
+            let h_str = parts[0];
+            let (h_val, unit) = if h_str.ends_with("grad") {
+                (&h_str[..h_str.len()-4], "grad")
+            } else if h_str.ends_with("turn") {
+                (&h_str[..h_str.len()-4], "turn")
+            } else if h_str.ends_with("deg") {
+                (&h_str[..h_str.len()-3], "deg")
+            } else if h_str.ends_with("rad") {
+                (&h_str[..h_str.len()-3], "rad")
+            } else {
+                (h_str, "")
+            };
+            
+            let h_raw = parse_numeric(h_val)?;
+            let h = normalize_hue(h_raw, unit);
             let s = parse_numeric(parts[1].trim_end_matches('%'))?;
             let l = parse_numeric(parts[2].trim_end_matches('%'))?;
             let (r, g, b) = hsl_to_rgb(h, s, l);
@@ -237,9 +266,21 @@ pub fn convert_to_color(color_str: &str) -> Option<Color> {
             };
             return Some(Color { r, g, b, a });
         } else if !has_alpha && parts.len() == 3 {
-            let h_str =
-                parts[0].trim_end_matches(|c: char| !c.is_numeric() && c != '.' && c != '-');
-            let h = parse_numeric(h_str)?;
+            let h_str = parts[0];
+            let (h_val, unit) = if h_str.ends_with("grad") {
+                (&h_str[..h_str.len()-4], "grad")
+            } else if h_str.ends_with("turn") {
+                (&h_str[..h_str.len()-4], "turn")
+            } else if h_str.ends_with("deg") {
+                (&h_str[..h_str.len()-3], "deg")
+            } else if h_str.ends_with("rad") {
+                (&h_str[..h_str.len()-3], "rad")
+            } else {
+                (h_str, "")
+            };
+            
+            let h_raw = parse_numeric(h_val)?;
+            let h = normalize_hue(h_raw, unit);
             let s = parse_numeric(parts[1].trim_end_matches('%'))?;
             let l = parse_numeric(parts[2].trim_end_matches('%'))?;
             let (r, g, b) = hsl_to_rgb(h, s, l);
