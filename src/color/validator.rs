@@ -205,7 +205,10 @@ pub fn is_valid_color(trimmed_lower: &str) -> bool {
             (rgb_body, false)
         };
 
-        if function_body.len() < 2 || !function_body.starts_with('(') || !function_body.ends_with(')') {
+        if function_body.len() < 2
+            || !function_body.starts_with('(')
+            || !function_body.ends_with(')')
+        {
             return false;
         }
 
@@ -220,7 +223,10 @@ pub fn is_valid_color(trimmed_lower: &str) -> bool {
             (hsl_body, false)
         };
 
-        if function_body.len() < 2 || !function_body.starts_with('(') || !function_body.ends_with(')') {
+        if function_body.len() < 2
+            || !function_body.starts_with('(')
+            || !function_body.ends_with(')')
+        {
             return false;
         }
 

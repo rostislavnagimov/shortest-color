@@ -77,7 +77,7 @@ fn parse_numeric_fast(s: &str) -> Option<f32> {
     if s.is_empty() {
         return None;
     }
-    
+
     let bytes = s.as_bytes();
     let mut result = 0.0f32;
     let mut decimal_divisor = 1.0f32;
@@ -182,7 +182,7 @@ pub fn convert_to_color(color_str: &str) -> Option<Color> {
     if bytes.len() > 4 && bytes[0] == b'r' && bytes[1] == b'g' && bytes[2] == b'b' {
         let has_alpha = bytes[3] == b'a';
         let start_idx = if has_alpha { 5 } else { 4 };
-        
+
         let end_idx = color_str.len() - 1;
         let inner = &color_str[start_idx..end_idx];
         let parts = split_function_values(inner);
@@ -210,7 +210,7 @@ pub fn convert_to_color(color_str: &str) -> Option<Color> {
     if bytes.len() > 4 && bytes[0] == b'h' && bytes[1] == b's' && bytes[2] == b'l' {
         let has_alpha = bytes[3] == b'a';
         let start_idx = if has_alpha { 5 } else { 4 };
-        
+
         let end_idx = color_str.len() - 1;
         let inner = &color_str[start_idx..end_idx];
         let parts = split_function_values(inner);
