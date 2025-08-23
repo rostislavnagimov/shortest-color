@@ -63,6 +63,12 @@ fn parse_f32_optimized(s: &str) -> Option<f32> {
     Some(if negative { -result } else { result })
 }
 
+fn is_color_keyword(name: &str) -> bool {
+    COLOR_KEYWORDS
+        .binary_search_by_key(&name, |&(keyword, _)| keyword)
+        .is_ok()
+}
+
 #[inline(always)]
 fn validate_rgb_parts(inner: &str, has_alpha: bool) -> bool {
     let parts: Vec<&str> = inner
@@ -71,21 +77,9 @@ fn validate_rgb_parts(inner: &str, has_alpha: bool) -> bool {
         .map(|s| s.trim())
         .collect();
 
-    let expected = if has_alpha { 4 } else { 3 };
-    if parts.len() != expected {
-        return false;
-    }
-
-    for (i, &part) in parts.iter().enumerate() {
-        if i < 3 {
-            if let Some(val) = parse_f32_optimized(part) {
-                if val < 0.0 || val > if part.contains('.') { 255.9 } else { 255.0 } {
-                    return false;
-                }
-            } else {
-                return false;
-            }
-        } else {
+    if has_alpha {
+        if parts.len() == 2 && is_color_keyword(parts[0]) {
+            let part = parts[1];
             if part.contains('%') {
                 if let Some(val_str) = part.strip_suffix('%') {
                     if let Some(val) = parse_f32_optimized(val_str) {
@@ -107,8 +101,59 @@ fn validate_rgb_parts(inner: &str, has_alpha: bool) -> bool {
                     return false;
                 }
             }
+            return true;
+        } else if parts.len() == 4 {
+            for (i, &part) in parts.iter().enumerate() {
+                if i < 3 {
+                    if let Some(val) = parse_f32_optimized(part) {
+                        if val < 0.0 || val > if part.contains('.') { 255.9 } else { 255.0 } {
+                            return false;
+                        }
+                    } else {
+                        return false;
+                    }
+                } else {
+                    if part.contains('%') {
+                        if let Some(val_str) = part.strip_suffix('%') {
+                            if let Some(val) = parse_f32_optimized(val_str) {
+                                if val < 0.0 || val > 100.0 {
+                                    return false;
+                                }
+                            } else {
+                                return false;
+                            }
+                        } else {
+                            return false;
+                        }
+                    } else {
+                        if let Some(val) = parse_f32_optimized(part) {
+                            if val < 0.0 || val > 1.0 {
+                                return false;
+                            }
+                        } else {
+                            return false;
+                        }
+                    }
+                }
+            }
+            return true;
+        }
+        return false;
+    } else {
+        if parts.len() != 3 {
+            return false;
+        }
+        for &part in &parts {
+            if let Some(val) = parse_f32_optimized(part) {
+                if val < 0.0 || val > if part.contains('.') { 255.9 } else { 255.0 } {
+                    return false;
+                }
+            } else {
+                return false;
+            }
         }
     }
+
     true
 }
 
@@ -120,30 +165,10 @@ fn validate_hsl_parts(inner: &str, has_alpha: bool) -> bool {
         .map(|s| s.trim())
         .collect();
 
-    let expected = if has_alpha { 4 } else { 3 };
-    if parts.len() != expected {
-        return false;
-    }
-
-    for (i, &part) in parts.iter().enumerate() {
-        match i {
-            0 => {
-                let numeric_part = if let Some(stripped) = part.strip_suffix("grad") {
-                    stripped
-                } else if let Some(stripped) = part.strip_suffix("turn") {
-                    stripped
-                } else if let Some(stripped) = part.strip_suffix("deg") {
-                    stripped
-                } else if let Some(stripped) = part.strip_suffix("rad") {
-                    stripped
-                } else {
-                    part
-                };
-                if numeric_part.is_empty() || parse_f32_optimized(numeric_part).is_none() {
-                    return false;
-                }
-            }
-            1 | 2 => {
+    if has_alpha {
+        if parts.len() == 2 && is_color_keyword(parts[0]) {
+            let part = parts[1];
+            if part.contains('%') {
                 if let Some(val_str) = part.strip_suffix('%') {
                     if let Some(val) = parse_f32_optimized(val_str) {
                         if val < 0.0 || val > 100.0 {
@@ -155,9 +180,100 @@ fn validate_hsl_parts(inner: &str, has_alpha: bool) -> bool {
                 } else {
                     return false;
                 }
+            } else {
+                if let Some(val) = parse_f32_optimized(part) {
+                    if val < 0.0 || val > 1.0 {
+                        return false;
+                    }
+                } else {
+                    return false;
+                }
             }
-            3 => {
-                if part.contains('%') {
+            return true;
+        } else if parts.len() == 4 {
+            for (i, &part) in parts.iter().enumerate() {
+                match i {
+                    0 => {
+                        let numeric_part = if let Some(stripped) = part.strip_suffix("grad") {
+                            stripped
+                        } else if let Some(stripped) = part.strip_suffix("turn") {
+                            stripped
+                        } else if let Some(stripped) = part.strip_suffix("deg") {
+                            stripped
+                        } else if let Some(stripped) = part.strip_suffix("rad") {
+                            stripped
+                        } else {
+                            part
+                        };
+                        if numeric_part.is_empty() || parse_f32_optimized(numeric_part).is_none() {
+                            return false;
+                        }
+                    }
+                    1 | 2 => {
+                        if let Some(val_str) = part.strip_suffix('%') {
+                            if let Some(val) = parse_f32_optimized(val_str) {
+                                if val < 0.0 || val > 100.0 {
+                                    return false;
+                                }
+                            } else {
+                                return false;
+                            }
+                        } else {
+                            return false;
+                        }
+                    }
+                    3 => {
+                        if part.contains('%') {
+                            if let Some(val_str) = part.strip_suffix('%') {
+                                if let Some(val) = parse_f32_optimized(val_str) {
+                                    if val < 0.0 || val > 100.0 {
+                                        return false;
+                                    }
+                                } else {
+                                    return false;
+                                }
+                            } else {
+                                return false;
+                            }
+                        } else {
+                            if let Some(val) = parse_f32_optimized(part) {
+                                if val < 0.0 || val > 1.0 {
+                                    return false;
+                                }
+                            } else {
+                                return false;
+                            }
+                        }
+                    }
+                    _ => return false,
+                }
+            }
+            return true;
+        }
+        return false;
+    } else {
+        if parts.len() != 3 {
+            return false;
+        }
+        for (i, &part) in parts.iter().enumerate() {
+            match i {
+                0 => {
+                    let numeric_part = if let Some(stripped) = part.strip_suffix("grad") {
+                        stripped
+                    } else if let Some(stripped) = part.strip_suffix("turn") {
+                        stripped
+                    } else if let Some(stripped) = part.strip_suffix("deg") {
+                        stripped
+                    } else if let Some(stripped) = part.strip_suffix("rad") {
+                        stripped
+                    } else {
+                        part
+                    };
+                    if numeric_part.is_empty() || parse_f32_optimized(numeric_part).is_none() {
+                        return false;
+                    }
+                }
+                1 | 2 => {
                     if let Some(val_str) = part.strip_suffix('%') {
                         if let Some(val) = parse_f32_optimized(val_str) {
                             if val < 0.0 || val > 100.0 {
@@ -169,19 +285,12 @@ fn validate_hsl_parts(inner: &str, has_alpha: bool) -> bool {
                     } else {
                         return false;
                     }
-                } else {
-                    if let Some(val) = parse_f32_optimized(part) {
-                        if val < 0.0 || val > 1.0 {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
                 }
+                _ => return false,
             }
-            _ => return false,
         }
     }
+
     true
 }
 
@@ -195,7 +304,7 @@ pub fn is_valid_color(trimmed_lower: &str) -> bool {
     if bytes[0] == b'#' {
         let hex_part = &bytes[1..];
         let len = hex_part.len();
-        return matches!(len, 6 | 8) && hex_part.iter().all(|&b| is_hex_char(b));
+        return matches!(len, 3 | 4 | 6 | 8) && hex_part.iter().all(|&b| is_hex_char(b));
     }
 
     if let Some(rgb_body) = trimmed_lower.strip_prefix("rgb") {
@@ -234,7 +343,5 @@ pub fn is_valid_color(trimmed_lower: &str) -> bool {
         return validate_hsl_parts(inner, has_alpha);
     }
 
-    COLOR_KEYWORDS
-        .binary_search_by_key(&trimmed_lower, |&(keyword, _)| keyword)
-        .is_ok()
+    is_color_keyword(trimmed_lower)
 }

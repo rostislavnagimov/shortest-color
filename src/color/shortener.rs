@@ -5,20 +5,20 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 
 #[inline(always)]
-fn can_be_short_fast(r: u8, g: u8, b: u8, a: u8) -> bool {
-    let r_match = (r & 0x0F) == (r >> 4);
-    let g_match = (g & 0x0F) == (g >> 4);
-    let b_match = (b & 0x0F) == (b >> 4);
-    let a_match = (a & 0x0F) == (a >> 4);
-    r_match & g_match & b_match & a_match
+fn can_shorten_hex(r: u8, g: u8, b: u8, a: u8) -> bool {
+    (r & 0x0F) == (r >> 4)
+        && (g & 0x0F) == (g >> 4)
+        && (b & 0x0F) == (b >> 4)
+        && (a & 0x0F) == (a >> 4)
 }
 
-static COLOR_TO_NAME: LazyLock<HashMap<(u8, u8, u8), &'static str>> = LazyLock::new(|| {
+static COLOR_TO_NAME: LazyLock<HashMap<u32, &'static str>> = LazyLock::new(|| {
     let mut map = HashMap::with_capacity(COLOR_KEYWORDS.len());
     for &(name, hex_val) in COLOR_KEYWORDS {
         if let Some(color) = convert_to_color(hex_val) {
             if color.a == 255 {
-                map.entry((color.r, color.g, color.b)).or_insert(name);
+                let rgb = ((color.r as u32) << 16) | ((color.g as u32) << 8) | (color.b as u32);
+                map.entry(rgb).or_insert(name);
             }
         }
     }
@@ -26,48 +26,49 @@ static COLOR_TO_NAME: LazyLock<HashMap<(u8, u8, u8), &'static str>> = LazyLock::
 });
 
 #[inline(always)]
-fn format_short_hex(r: u8, g: u8, b: u8, a: u8, has_alpha: bool) -> String {
-    if has_alpha {
-        format!("#{:x}{:x}{:x}{:x}", r / 17, g / 17, b / 17, a / 17)
-    } else {
-        format!("#{:x}{:x}{:x}", r / 17, g / 17, b / 17)
-    }
+fn color_to_u32(color: &Color) -> u32 {
+    ((color.r as u32) << 16) | ((color.g as u32) << 8) | (color.b as u32)
 }
 
-#[inline(always)]
-fn format_full_hex(r: u8, g: u8, b: u8, a: u8, has_alpha: bool) -> String {
-    if has_alpha {
-        format!("#{:02x}{:02x}{:02x}{:02x}", r, g, b, a)
-    } else {
-        format!("#{:02x}{:02x}{:02x}", r, g, b)
-    }
-}
-
-#[inline(always)]
 pub fn shorten_color(color: &Color) -> String {
     let has_alpha = color.a != 255;
-    let can_short = can_be_short_fast(color.r, color.g, color.b, color.a);
+    let can_short = can_shorten_hex(color.r, color.g, color.b, color.a);
 
-    let short_hex_len = if has_alpha { 5 } else { 4 };
-    let full_hex_len = if has_alpha { 9 } else { 7 };
+    if has_alpha {
+        if can_short {
+            format!(
+                "#{:x}{:x}{:x}{:x}",
+                color.r >> 4,
+                color.g >> 4,
+                color.b >> 4,
+                color.a >> 4
+            )
+        } else {
+            format!(
+                "#{:02x}{:02x}{:02x}{:02x}",
+                color.r, color.g, color.b, color.a
+            )
+        }
+    } else {
+        let short_hex_len = 4;
+        let full_hex_len = 7;
+        let mut shortest = full_hex_len;
+        let mut result = format!("#{:02x}{:02x}{:02x}", color.r, color.g, color.b);
 
-    let mut shortest = full_hex_len;
-    let mut result = format_full_hex(color.r, color.g, color.b, color.a, has_alpha);
+        if can_short && short_hex_len < shortest {
+            shortest = short_hex_len;
+            result = format!("#{:x}{:x}{:x}", color.r >> 4, color.g >> 4, color.b >> 4);
+        }
 
-    if can_short && short_hex_len < shortest {
-        shortest = short_hex_len;
-        result = format_short_hex(color.r, color.g, color.b, color.a, has_alpha);
-    }
-
-    if !has_alpha {
-        if let Some(name) = COLOR_TO_NAME.get(&(color.r, color.g, color.b)) {
+        let rgb = color_to_u32(color);
+        if let Some(&name) = COLOR_TO_NAME.get(&rgb) {
             if name.len() < shortest {
                 result = name.to_string();
             }
         }
-    }
 
-    result
+        result
+    }
 }
 
 #[inline(always)]
