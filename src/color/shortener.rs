@@ -70,12 +70,3 @@ pub fn shorten_color(color: &Color) -> String {
         result
     }
 }
-
-#[inline(always)]
-pub fn shorten_hex(hex: &str) -> String {
-    if let Some(color) = convert_to_color(hex) {
-        shorten_color(&color)
-    } else {
-        hex.to_string()
-    }
-}

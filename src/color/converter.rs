@@ -1,54 +1,43 @@
 use super::keywords::COLOR_KEYWORDS;
 use super::model::Color;
 
-const HEX_LOOKUP: [u8; 256] = {
-    let mut lookup = [255; 256];
-    lookup[b'0' as usize] = 0;
-    lookup[b'1' as usize] = 1;
-    lookup[b'2' as usize] = 2;
-    lookup[b'3' as usize] = 3;
-    lookup[b'4' as usize] = 4;
-    lookup[b'5' as usize] = 5;
-    lookup[b'6' as usize] = 6;
-    lookup[b'7' as usize] = 7;
-    lookup[b'8' as usize] = 8;
-    lookup[b'9' as usize] = 9;
-    lookup[b'a' as usize] = 10;
-    lookup[b'b' as usize] = 11;
-    lookup[b'c' as usize] = 12;
-    lookup[b'd' as usize] = 13;
-    lookup[b'e' as usize] = 14;
-    lookup[b'f' as usize] = 15;
-    lookup[b'A' as usize] = 10;
-    lookup[b'B' as usize] = 11;
-    lookup[b'C' as usize] = 12;
-    lookup[b'D' as usize] = 13;
-    lookup[b'E' as usize] = 14;
-    lookup[b'F' as usize] = 15;
-    lookup
+const HEX_MAP: [u8; 256] = {
+    let mut map = [255; 256];
+    let mut i = b'0';
+    while i <= b'9' {
+        map[i as usize] = i - b'0';
+        i += 1;
+    }
+    i = b'A';
+    while i <= b'F' {
+        map[i as usize] = i - b'A' + 10;
+        i += 1;
+    }
+    i = b'a';
+    while i <= b'f' {
+        map[i as usize] = i - b'a' + 10;
+        i += 1;
+    }
+    map
 };
 
 #[inline(always)]
-fn hex_to_u8(c: u8) -> Option<u8> {
-    let val = unsafe { *HEX_LOOKUP.get_unchecked(c as usize) };
-    if val > 15 {
-        None
-    } else {
-        Some(val)
-    }
+fn hex_val(b: u8) -> Option<u8> {
+    let val = unsafe { *HEX_MAP.get_unchecked(b as usize) };
+    if val > 15 { None } else { Some(val) }
 }
 
 #[inline(always)]
-fn parse_hex_pair(bytes: &[u8], pos: usize) -> Option<u8> {
-    let high = hex_to_u8(bytes[pos])?;
-    let low = hex_to_u8(bytes[pos + 1])?;
-    Some(high << 4 | low)
+fn parse_hex2(bytes: &[u8], i: usize) -> Option<u8> {
+    let high = hex_val(bytes[i])?;
+    let low = hex_val(bytes[i + 1])?;
+    Some((high << 4) | low)
 }
 
 #[inline(always)]
-fn parse_hex_single(byte: u8) -> Option<u8> {
-    let val = hex_to_u8(byte)?;
-    Some(val << 4 | val)
+fn parse_hex1(b: u8) -> Option<u8> {
+    let val = hex_val(b)?;
+    Some((val << 4) | val)
 }
 
 #[inline(always)]
@@ -77,36 +66,28 @@ fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
 
 fn parse_number(s: &str) -> Option<f32> {
     let bytes = s.as_bytes();
-    if bytes.is_empty() {
-        return None;
-    }
+    if bytes.is_empty() { return None; }
 
     let mut result = 0.0f32;
     let mut decimal_places = 0u32;
     let mut pos = 0;
     let negative = bytes[0] == b'-';
 
-    if negative {
-        pos = 1;
-    }
+    if negative { pos = 1; }
 
     for &b in &bytes[pos..] {
         match b {
             b'0'..=b'9' => {
                 if decimal_places > 0 {
                     decimal_places += 1;
-                    if decimal_places > 4 {
-                        break;
-                    }
+                    if decimal_places > 4 { break; }
                     result += (b - b'0') as f32 / (10u32.pow(decimal_places - 1)) as f32;
                 } else {
                     result = result * 10.0 + (b - b'0') as f32;
                 }
             }
             b'.' => {
-                if decimal_places > 0 {
-                    return None;
-                }
+                if decimal_places > 0 { return None; }
                 decimal_places = 1;
             }
             _ => return None,
@@ -147,28 +128,28 @@ pub fn convert_to_color(color_str: &str) -> Option<Color> {
         let hex = &bytes[1..];
         return match hex.len() {
             3 => Some(Color {
-                r: parse_hex_single(hex[0])?,
-                g: parse_hex_single(hex[1])?,
-                b: parse_hex_single(hex[2])?,
+                r: parse_hex1(hex[0])?,
+                g: parse_hex1(hex[1])?,
+                b: parse_hex1(hex[2])?,
                 a: 255,
             }),
             4 => Some(Color {
-                r: parse_hex_single(hex[0])?,
-                g: parse_hex_single(hex[1])?,
-                b: parse_hex_single(hex[2])?,
-                a: parse_hex_single(hex[3])?,
+                r: parse_hex1(hex[0])?,
+                g: parse_hex1(hex[1])?,
+                b: parse_hex1(hex[2])?,
+                a: parse_hex1(hex[3])?,
             }),
             6 => Some(Color {
-                r: parse_hex_pair(hex, 0)?,
-                g: parse_hex_pair(hex, 2)?,
-                b: parse_hex_pair(hex, 4)?,
+                r: parse_hex2(hex, 0)?,
+                g: parse_hex2(hex, 2)?,
+                b: parse_hex2(hex, 4)?,
                 a: 255,
             }),
             8 => Some(Color {
-                r: parse_hex_pair(hex, 0)?,
-                g: parse_hex_pair(hex, 2)?,
-                b: parse_hex_pair(hex, 4)?,
-                a: parse_hex_pair(hex, 6)?,
+                r: parse_hex2(hex, 0)?,
+                g: parse_hex2(hex, 2)?,
+                b: parse_hex2(hex, 4)?,
+                a: parse_hex2(hex, 6)?,
             }),
             _ => None,
         };
@@ -197,9 +178,9 @@ pub fn convert_to_color(color_str: &str) -> Option<Color> {
                         let alpha_str = parts[1];
                         let alpha_val = parse_number(alpha_str.trim_end_matches('%'))?;
                         let a = if alpha_str.ends_with('%') {
-                            (alpha_val * 2.55).round() as u8
+                            (alpha_val * 2.55 + 0.5) as u8
                         } else {
-                            (alpha_val * 255.0).round() as u8
+                            (alpha_val * 255.0 + 0.5) as u8
                         };
                         return Some(Color {
                             r: base_color.r,
@@ -215,17 +196,15 @@ pub fn convert_to_color(color_str: &str) -> Option<Color> {
                     let alpha_str = parts[3];
                     let alpha_val = parse_number(alpha_str.trim_end_matches('%'))?;
                     let a = if alpha_str.ends_with('%') {
-                        (alpha_val * 2.55).round() as u8
+                        (alpha_val * 2.55 + 0.5) as u8
                     } else {
-                        (alpha_val * 255.0).round() as u8
+                        (alpha_val * 255.0 + 0.5) as u8
                     };
                     return Some(Color { r, g, b, a });
                 }
                 return None;
             } else {
-                if parts.len() != 3 {
-                    return None;
-                }
+                if parts.len() != 3 { return None; }
                 let r = parse_number(parts[0])?.clamp(0.0, 255.0).round() as u8;
                 let g = parse_number(parts[1])?.clamp(0.0, 255.0).round() as u8;
                 let b = parse_number(parts[2])?.clamp(0.0, 255.0).round() as u8;
@@ -238,9 +217,9 @@ pub fn convert_to_color(color_str: &str) -> Option<Color> {
                         let alpha_str = parts[1];
                         let alpha_val = parse_number(alpha_str.trim_end_matches('%'))?;
                         let a = if alpha_str.ends_with('%') {
-                            (alpha_val * 2.55).round() as u8
+                            (alpha_val * 2.55 + 0.5) as u8
                         } else {
-                            (alpha_val * 255.0).round() as u8
+                            (alpha_val * 255.0 + 0.5) as u8
                         };
                         return Some(Color {
                             r: base_color.r,
@@ -270,17 +249,15 @@ pub fn convert_to_color(color_str: &str) -> Option<Color> {
                     let alpha_str = parts[3];
                     let alpha_val = parse_number(alpha_str.trim_end_matches('%'))?;
                     let a = if alpha_str.ends_with('%') {
-                        (alpha_val * 2.55).round() as u8
+                        (alpha_val * 2.55 + 0.5) as u8
                     } else {
-                        (alpha_val * 255.0).round() as u8
+                        (alpha_val * 255.0 + 0.5) as u8
                     };
                     return Some(Color { r, g, b, a });
                 }
                 return None;
             } else {
-                if parts.len() != 3 {
-                    return None;
-                }
+                if parts.len() != 3 { return None; }
                 let h_str = parts[0];
                 let (h_val, unit) = if let Some(stripped) = h_str.strip_suffix("grad") {
                     (parse_number(stripped)?, "grad")
@@ -304,16 +281,4 @@ pub fn convert_to_color(color_str: &str) -> Option<Color> {
     }
 
     resolve_color_keyword(color_str)
-}
-
-#[inline]
-pub fn color_to_hex(color: &Color) -> String {
-    if color.a == 255 {
-        format!("#{:02x}{:02x}{:02x}", color.r, color.g, color.b)
-    } else {
-        format!(
-            "#{:02x}{:02x}{:02x}{:02x}",
-            color.r, color.g, color.b, color.a
-        )
-    }
 }
