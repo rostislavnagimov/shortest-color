@@ -1,10 +1,6 @@
 pub mod converter;
 pub mod keywords;
 pub mod model;
-pub mod shortener;
-pub mod validator;
 
-pub use converter::convert_to_color;
+pub use converter::{convert_to_color, try_convert_color, is_valid_color, shorten_color};
 pub use model::Color;
-pub use shortener::shorten_color;
-pub use validator::is_valid_color;
