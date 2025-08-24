@@ -1,18 +1,16 @@
-pub mod color;
-pub use color::{try_convert_color, is_valid_color, shorten_color};
+mod color;
+
+pub use color::{shorten, parse, Color};
 
 pub fn shorten_css_color(color_str: &str) -> String {
     let trimmed = color_str.trim().to_ascii_lowercase();
 
     if trimmed.len() < 5 {
-        if trimmed == "#f00" {
-            return "red".to_string();
-        }
-        return trimmed;
+        return if trimmed == "#f00" { "red".to_string() } else { trimmed };
     }
 
-    match try_convert_color(&trimmed) {
-        Some(color) => shorten_color(&color),
+    match parse(&trimmed) {
+        Some(color) => shorten(&color),
         None => color_str.to_string(),
     }
 }
