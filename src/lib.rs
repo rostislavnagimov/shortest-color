@@ -1,12 +1,16 @@
 mod color;
 
-pub use color::{shorten, parse, Color};
+pub use color::{parse, shorten, Color};
 
 pub fn shorten_css_color(color_str: &str) -> String {
     let trimmed = color_str.trim().to_ascii_lowercase();
 
     if trimmed.len() < 5 {
-        return if trimmed == "#f00" { "red".to_string() } else { trimmed };
+        return if trimmed == "#f00" {
+            "red".to_string()
+        } else {
+            trimmed
+        };
     }
 
     match parse(&trimmed) {

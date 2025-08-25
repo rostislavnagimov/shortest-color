@@ -111,7 +111,10 @@ fn test_hsla_colors() {
     assert_eq!(shorten_css_color("hsla(0, 100%, 50%, 50%)"), "#ff000080");
 
     assert_eq!(shorten_css_color("hsla(0,100%,50%,0.5)"), "#ff000080");
-    assert_eq!(shorten_css_color("hsla( 0 , 100% , 50% , 0.5 )"), "#ff000080");
+    assert_eq!(
+        shorten_css_color("hsla( 0 , 100% , 50% , 0.5 )"),
+        "#ff000080"
+    );
     assert_eq!(shorten_css_color("hsla(0 100% 50% 0.5)"), "#ff000080");
 
     assert_eq!(shorten_css_color("rgba(lime, 0.5)"), "#00ff0080");
@@ -163,14 +166,29 @@ fn test_invalid_colors() {
     assert_eq!(shorten_css_color("invalid"), "invalid");
     assert_eq!(shorten_css_color("rgb(300, 0, 0)"), "rgb(300, 0, 0)");
     assert_eq!(shorten_css_color("#gggggg"), "#gggggg");
-    assert_eq!(shorten_css_color("hsl(400, 200%, 150%)"), "hsl(400, 200%, 150%)");
+    assert_eq!(
+        shorten_css_color("hsl(400, 200%, 150%)"),
+        "hsl(400, 200%, 150%)"
+    );
     assert_eq!(shorten_css_color("rgb(255, 0)"), "rgb(255, 0)");
     assert_eq!(shorten_css_color("rgba(255, 0, 0)"), "rgba(255, 0, 0)");
     assert_eq!(shorten_css_color("hsl(0, 100%)"), "hsl(0, 100%)");
-    assert_eq!(shorten_css_color("hsla(0, 100%, 50%)"), "hsla(0, 100%, 50%)");
-    assert_eq!(shorten_css_color("rgb(-10, -10, -10)"), "rgb(-10, -10, -10)");
-    assert_eq!(shorten_css_color("rgba(255, 0, 0, 1.5)"), "rgba(255, 0, 0, 1.5)");
-    assert_eq!(shorten_css_color("rgba(255, 0, 0, -0.5)"), "rgba(255, 0, 0, -0.5)");
+    assert_eq!(
+        shorten_css_color("hsla(0, 100%, 50%)"),
+        "hsla(0, 100%, 50%)"
+    );
+    assert_eq!(
+        shorten_css_color("rgb(-10, -10, -10)"),
+        "rgb(-10, -10, -10)"
+    );
+    assert_eq!(
+        shorten_css_color("rgba(255, 0, 0, 1.5)"),
+        "rgba(255, 0, 0, 1.5)"
+    );
+    assert_eq!(
+        shorten_css_color("rgba(255, 0, 0, -0.5)"),
+        "rgba(255, 0, 0, -0.5)"
+    );
 }
 
 #[test]
