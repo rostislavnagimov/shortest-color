@@ -2,15 +2,23 @@
 name = "shortest-color"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.60.0"
 description = "A fast CSS color parser and shortener that converts colors to their shortest possible representation"
 license = "MIT OR Apache-2.0"
 authors = ["Rostislav Nagimov <rostislav.nagimov@gmail.com>"]
 repository = "https://github.com/rostislavnagimov/shortest-color"
 homepage = "https://github.com/rostislavnagimov/shortest-color"
-documentation = "https://github.com/rostislavnagimov/shortest-color"
+documentation = "https://docs.rs/shortest-color"
 readme = "README.md"
 keywords = ["css", "color", "parser", "web", "optimization"]
 categories = ["web-programming", "parsing", "graphics"]
+exclude = [
+    "benches/*",
+    "tests/*", 
+    ".github/*",
+    "*.md",
+    "!README.md"
+]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -20,5 +28,25 @@ name = "performance"
 path = "benches/performance.rs"
 harness = false
 
-
 [dependencies]
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+
+[profile.bench]
+inherits = "release"
+debug = true
+
+[profile.dev]
+opt-level = 0
+debug = true
+overflow-checks = true
+
+[profile.release-max]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+panic = "abort"

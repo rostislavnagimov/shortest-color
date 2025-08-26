@@ -37,268 +37,248 @@ impl std::fmt::Display for Color {
     }
 }
 
-const HEX_MAP: [u8; 128] = {
-    let mut map = [255; 128];
+const HEX: [u8; 128] = {
+    let mut m = [255; 128];
     let mut i = 48;
     while i <= 57 {
-        map[i] = (i - 48) as u8;
+        m[i] = (i - 48) as u8;
         i += 1;
     }
     i = 65;
     while i <= 70 {
-        map[i] = (i - 55) as u8;
+        m[i] = (i - 55) as u8;
         i += 1;
     }
     i = 97;
     while i <= 102 {
-        map[i] = (i - 87) as u8;
+        m[i] = (i - 87) as u8;
         i += 1;
     }
-    map
+    m
 };
 
 #[inline]
-fn hex_val(b: u8) -> Option<u8> {
-    if b < 128 {
-        let val = HEX_MAP[b as usize];
-        if val > 15 {
-            None
+fn hex(b: u8) -> Option<u8> {
+    HEX.get(b as usize).and_then(|&v| if v > 15 { None } else { Some(v) })
+}
+
+#[inline]
+fn hex2(b: &[u8], i: usize) -> Option<u8> {
+    Some((hex(b[i])? << 4) | hex(b[i + 1])?)
+}
+
+#[inline]
+fn hex1(b: u8) -> Option<u8> {
+    let v = hex(b)?;
+    Some((v << 4) | v)
+}
+
+fn rgb(b: &[u8]) -> Option<u8> {
+    if b.is_empty() || b.len() > 6 || b[0] == b'-' {
+        return None;
+    }
+
+    let has_dot = b.iter().any(|&x| x == b'.');
+    
+    if !has_dot {
+        let mut r = 0u16;
+        for &c in b {
+            if c < b'0' || c > b'9' {
+                return None;
+            }
+            r = r * 10 + (c - b'0') as u16;
+            if r > 255 {
+                return None;
+            }
+        }
+        return Some(r as u8);
+    }
+
+    let mut r = 0.0f32;
+    let mut d = 0u32;
+
+    for &c in b {
+        match c {
+            b'0'..=b'9' => {
+                if d > 0 {
+                    d += 1;
+                    if d > 4 { break; }
+                    r += (c - b'0') as f32 / (10u32.pow(d - 1)) as f32;
+                } else {
+                    r = r * 10.0 + (c - b'0') as f32;
+                    if r > 255.9 { return None; }
+                }
+            }
+            b'.' => {
+                if d > 0 { return None; }
+                d = 1;
+            }
+            _ => return None,
+        }
+    }
+
+    Some((r + 0.5) as u8)
+}
+
+fn pct(b: &[u8]) -> Option<f32> {
+    if b.len() < 2 || b.len() > 6 || b[b.len() - 1] != b'%' {
+        return None;
+    }
+
+    let n = &b[..b.len() - 1];
+    if n.is_empty() { return None; }
+
+    let mut r = 0.0f32;
+    let mut d = 0u32;
+    let mut p = 0;
+    let neg = n[0] == b'-';
+
+    if neg {
+        p = 1;
+        if n.len() == 1 { return None; }
+    }
+
+    for &c in &n[p..] {
+        match c {
+            b'0'..=b'9' => {
+                if d > 0 {
+                    d += 1;
+                    if d > 3 { break; }
+                    r += (c - b'0') as f32 / (10u32.pow(d - 1)) as f32;
+                } else {
+                    r = r * 10.0 + (c - b'0') as f32;
+                }
+            }
+            b'.' => {
+                if d > 0 { return None; }
+                d = 1;
+            }
+            _ => return None,
+        }
+    }
+
+    let fr = if neg { -r } else { r };
+    if !(0.0..=100.0).contains(&fr) { return None; }
+    Some(fr)
+}
+
+fn alpha(b: &[u8]) -> Option<u8> {
+    if b.is_empty() { return None; }
+
+    if b[b.len() - 1] == b'%' {
+        let p = pct(b)?;
+        return Some((p * 2.55 + 0.5) as u8);
+    }
+
+    if b[0] == b'-' { return None; }
+
+    let mut r = 0.0f32;
+    let mut d = 0u32;
+
+    for &c in b {
+        match c {
+            b'0'..=b'9' => {
+                if d > 0 {
+                    d += 1;
+                    if d > 4 { break; }
+                    r += (c - b'0') as f32 / (10u32.pow(d - 1)) as f32;
+                } else {
+                    r = r * 10.0 + (c - b'0') as f32;
+                }
+            }
+            b'.' => {
+                if d > 0 { return None; }
+                d = 1;
+            }
+            _ => return None,
+        }
+    }
+
+    if r > 1.0 { return None; }
+    Some((r * 255.0 + 0.5) as u8)
+}
+
+fn hue(s: &str) -> Option<f32> {
+    let b = s.as_bytes();
+    let l = b.len();
+    
+    if l == 0 { return None; }
+    
+    let (h, u) = if l >= 4 && b[l-4..] == *b"grad" {
+        (float(&s[..l-4])?, "grad")
+    } else if l >= 4 && b[l-4..] == *b"turn" {
+        (float(&s[..l-4])?, "turn")
+    } else if l >= 3 {
+        if b[l-3..] == *b"deg" {
+            (float(&s[..l-3])?, "deg")
+        } else if b[l-3..] == *b"rad" {
+            (float(&s[..l-3])?, "rad")
         } else {
-            Some(val)
+            (float(s)?, "")
         }
     } else {
-        None
+        (float(s)?, "")
+    };
+
+    Some(norm(h, u))
+}
+
+fn float(s: &str) -> Option<f32> {
+    let b = s.as_bytes();
+    if b.is_empty() || b.len() > 8 { return None; }
+
+    let mut r = 0.0f32;
+    let mut d = 0u32;
+    let mut p = 0;
+    let neg = b[0] == b'-';
+
+    if neg {
+        p = 1;
+        if b.len() == 1 { return None; }
     }
+
+    for &c in &b[p..] {
+        match c {
+            b'0'..=b'9' => {
+                if d > 0 {
+                    d += 1;
+                    if d > 4 { break; }
+                    r += (c - b'0') as f32 / (10u32.pow(d - 1)) as f32;
+                } else {
+                    r = r * 10.0 + (c - b'0') as f32;
+                }
+            }
+            b'.' => {
+                if d > 0 { return None; }
+                d = 1;
+            }
+            _ => return None,
+        }
+    }
+
+    Some(if neg { -r } else { r })
 }
 
 #[inline]
-fn parse_hex2(bytes: &[u8], i: usize) -> Option<u8> {
-    let high = hex_val(bytes[i])?;
-    let low = hex_val(bytes[i + 1])?;
-    Some(high << 4 | low)
-}
-
-#[inline]
-fn parse_hex1(b: u8) -> Option<u8> {
-    let val = hex_val(b)?;
-    Some(val << 4 | val)
-}
-
-fn parse_rgb_value(bytes: &[u8]) -> Option<u8> {
-    if bytes.is_empty() || bytes.len() > 6 || bytes[0] == b'-' {
-        return None;
-    }
-
-    let mut result = 0.0f32;
-    let mut decimal_places = 0u32;
-
-    for &b in bytes {
-        match b {
-            b'0'..=b'9' => {
-                if decimal_places > 0 {
-                    decimal_places += 1;
-                    if decimal_places > 4 {
-                        break;
-                    }
-                    result += (b - b'0') as f32 / (10u32.pow(decimal_places - 1)) as f32;
-                } else {
-                    result = result * 10.0 + (b - b'0') as f32;
-                    if result > 255.9 {
-                        return None;
-                    }
-                }
-            }
-            b'.' => {
-                if decimal_places > 0 {
-                    return None;
-                }
-                decimal_places = 1;
-            }
-            _ => return None,
-        }
-    }
-
-    Some((result + 0.5) as u8)
-}
-
-fn parse_percentage(bytes: &[u8]) -> Option<f32> {
-    if bytes.is_empty() || bytes.len() > 6 || !bytes.ends_with(b"%") {
-        return None;
-    }
-
-    let num_bytes = &bytes[..bytes.len() - 1];
-    if num_bytes.is_empty() {
-        return None;
-    }
-
-    let mut result = 0.0f32;
-    let mut decimal_places = 0u32;
-    let mut pos = 0;
-    let negative = num_bytes[0] == b'-';
-
-    if negative {
-        pos = 1;
-        if num_bytes.len() == 1 {
-            return None;
-        }
-    }
-
-    for &b in &num_bytes[pos..] {
-        match b {
-            b'0'..=b'9' => {
-                if decimal_places > 0 {
-                    decimal_places += 1;
-                    if decimal_places > 3 {
-                        break;
-                    }
-                    result += (b - b'0') as f32 / (10u32.pow(decimal_places - 1)) as f32;
-                } else {
-                    result = result * 10.0 + (b - b'0') as f32;
-                }
-            }
-            b'.' => {
-                if decimal_places > 0 {
-                    return None;
-                }
-                decimal_places = 1;
-            }
-            _ => return None,
-        }
-    }
-
-    let final_result = if negative { -result } else { result };
-    if !(0.0..=100.0).contains(&final_result) {
-        return None;
-    }
-
-    Some(final_result)
-}
-
-fn parse_alpha_value(bytes: &[u8]) -> Option<u8> {
-    if bytes.is_empty() {
-        return None;
-    }
-
-    if bytes.ends_with(b"%") {
-        let percentage = parse_percentage(bytes)?;
-        return Some((percentage * 2.55 + 0.5) as u8);
-    }
-
-    if bytes[0] == b'-' {
-        return None;
-    }
-
-    let mut result = 0.0f32;
-    let mut decimal_places = 0u32;
-
-    for &b in bytes {
-        match b {
-            b'0'..=b'9' => {
-                if decimal_places > 0 {
-                    decimal_places += 1;
-                    if decimal_places > 4 {
-                        break;
-                    }
-                    result += (b - b'0') as f32 / (10u32.pow(decimal_places - 1)) as f32;
-                } else {
-                    result = result * 10.0 + (b - b'0') as f32;
-                }
-            }
-            b'.' => {
-                if decimal_places > 0 {
-                    return None;
-                }
-                decimal_places = 1;
-            }
-            _ => return None,
-        }
-    }
-
-    if result > 1.0 {
-        return None;
-    }
-    Some((result * 255.0 + 0.5) as u8)
-}
-
-fn parse_hue_value(s: &str) -> Option<f32> {
-    let (h_val, unit) = if let Some(stripped) = s.strip_suffix("grad") {
-        (parse_float(stripped)?, "grad")
-    } else if let Some(stripped) = s.strip_suffix("turn") {
-        (parse_float(stripped)?, "turn")
-    } else if let Some(stripped) = s.strip_suffix("deg") {
-        (parse_float(stripped)?, "deg")
-    } else if let Some(stripped) = s.strip_suffix("rad") {
-        (parse_float(stripped)?, "rad")
-    } else {
-        (parse_float(s)?, "")
+fn norm(v: f32, u: &str) -> f32 {
+    let deg = match u {
+        "rad" => v * 57.295_78,
+        "grad" => v * 0.9,
+        "turn" => v * 360.0,
+        _ => v,
     };
-
-    Some(normalize_angle(h_val, unit))
+    ((deg % 360.0) + 360.0) % 360.0
 }
 
-fn parse_float(s: &str) -> Option<f32> {
-    let bytes = s.as_bytes();
-    if bytes.is_empty() || bytes.len() > 8 {
-        return None;
-    }
-
-    let mut result = 0.0f32;
-    let mut decimal_places = 0u32;
-    let mut pos = 0;
-    let negative = bytes[0] == b'-';
-
-    if negative {
-        pos = 1;
-        if bytes.len() == 1 {
-            return None;
-        }
-    }
-
-    for &b in &bytes[pos..] {
-        match b {
-            b'0'..=b'9' => {
-                if decimal_places > 0 {
-                    decimal_places += 1;
-                    if decimal_places > 4 {
-                        break;
-                    }
-                    result += (b - b'0') as f32 / (10u32.pow(decimal_places - 1)) as f32;
-                } else {
-                    result = result * 10.0 + (b - b'0') as f32;
-                }
-            }
-            b'.' => {
-                if decimal_places > 0 {
-                    return None;
-                }
-                decimal_places = 1;
-            }
-            _ => return None,
-        }
-    }
-
-    Some(if negative { -result } else { result })
-}
-
-fn normalize_angle(value: f32, unit: &str) -> f32 {
-    let degrees = match unit {
-        "rad" => value * 57.295_78,
-        "grad" => value * 0.9,
-        "turn" => value * 360.0,
-        _ => value,
-    };
-    ((degrees % 360.0) + 360.0) % 360.0
-}
-
-fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
+fn hsl2rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
     let s = s * 0.01;
     let l = l * 0.01;
     let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
-    let h_sector = h * (1.0 / 60.0);
-    let x = c * (1.0 - ((h_sector % 2.0) - 1.0).abs());
+    let h_s = h * (1.0 / 60.0);
+    let x = c * (1.0 - ((h_s % 2.0) - 1.0).abs());
     let m = l - c * 0.5;
 
-    let (r, g, b) = match h_sector as u8 {
+    let (r, g, b) = match h_s as u8 {
         0 => (c, x, 0.0),
         1 => (x, c, 0.0),
         2 => (0.0, c, x),
@@ -314,247 +294,266 @@ fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
     )
 }
 
-fn split_params(s: &str) -> [&str; 4] {
-    let mut parts = [""; 4];
-    let mut count = 0;
-    let mut start = 0;
+fn has(b: &[u8], t: u8) -> bool {
+    b.iter().any(|&x| x == t)
+}
 
-    for (i, &b) in s.as_bytes().iter().enumerate() {
-        if (b == b',' || b == b' ') && count < 4 {
-            if i > start {
-                let part = s[start..i].trim();
+fn split(s: &str) -> [&str; 4] {
+    let mut p = [""; 4];
+    let mut cnt = 0;
+    let b = s.as_bytes();
+    let l = b.len();
+    let mut st = 0;
+    let mut i = 0;
+
+    while i < l && cnt < 4 {
+        if b[i] == b',' || b[i] == b' ' {
+            if i > st {
+                let part = std::str::from_utf8(&b[st..i]).unwrap().trim();
                 if !part.is_empty() {
-                    parts[count] = part;
-                    count += 1;
+                    p[cnt] = part;
+                    cnt += 1;
                 }
             }
-            start = i + 1;
-            // Пропускаем подряд идущие разделители
-            while start < s.len() && (s.as_bytes()[start] == b',' || s.as_bytes()[start] == b' ') {
-                start += 1;
+            
+            i += 1;
+            while i < l && (b[i] == b',' || b[i] == b' ') {
+                i += 1;
             }
+            st = i;
+        } else {
+            i += 1;
         }
     }
 
-    if start < s.len() && count < 4 {
-        let part = s[start..].trim();
+    if st < l && cnt < 4 {
+        let part = std::str::from_utf8(&b[st..]).unwrap().trim();
         if !part.is_empty() {
-            parts[count] = part;
+            p[cnt] = part;
         }
     }
 
-    parts
+    p
 }
 
-fn resolve_keyword(name: &str) -> Option<Color> {
-    if name.is_empty() || name.len() > 20 {
-        return None;
+static KW: LazyLock<HashMap<&'static str, Color>> = LazyLock::new(|| {
+    let mut m = HashMap::with_capacity(KEYWORDS.len());
+    for &(n, h) in KEYWORDS {
+        if let Some(c) = parse(h) {
+            m.insert(n, c);
+        }
     }
+    m
+});
 
-    KEYWORDS
-        .binary_search_by_key(&name, |&(keyword, _)| keyword)
-        .ok()
-        .and_then(|idx| parse(KEYWORDS[idx].1))
+fn kw(n: &str) -> Option<Color> {
+    if n.len() > 20 { return None; }
+    KW.get(n).copied()
 }
 
-pub fn parse(color_str: &str) -> Option<Color> {
-    let bytes = color_str.as_bytes();
+pub fn parse(s: &str) -> Option<Color> {
+    let b = s.as_bytes();
+    let l = b.len();
 
-    if bytes.is_empty() {
-        return None;
-    }
+    if l == 0 { return None; }
 
-    if bytes[0] == b'#' {
-        let hex = &bytes[1..];
-        return match hex.len() {
+    if b[0] == b'#' {
+        let h = &b[1..];
+        return match h.len() {
             3 => Some(Color {
-                r: parse_hex1(hex[0])?,
-                g: parse_hex1(hex[1])?,
-                b: parse_hex1(hex[2])?,
+                r: hex1(h[0])?,
+                g: hex1(h[1])?,
+                b: hex1(h[2])?,
                 a: 255,
             }),
             4 => Some(Color {
-                r: parse_hex1(hex[0])?,
-                g: parse_hex1(hex[1])?,
-                b: parse_hex1(hex[2])?,
-                a: parse_hex1(hex[3])?,
+                r: hex1(h[0])?,
+                g: hex1(h[1])?,
+                b: hex1(h[2])?,
+                a: hex1(h[3])?,
             }),
             6 => Some(Color {
-                r: parse_hex2(hex, 0)?,
-                g: parse_hex2(hex, 2)?,
-                b: parse_hex2(hex, 4)?,
+                r: hex2(h, 0)?,
+                g: hex2(h, 2)?,
+                b: hex2(h, 4)?,
                 a: 255,
             }),
             8 => Some(Color {
-                r: parse_hex2(hex, 0)?,
-                g: parse_hex2(hex, 2)?,
-                b: parse_hex2(hex, 4)?,
-                a: parse_hex2(hex, 6)?,
+                r: hex2(h, 0)?,
+                g: hex2(h, 2)?,
+                b: hex2(h, 4)?,
+                a: hex2(h, 6)?,
             }),
             _ => None,
         };
     }
 
-    // Быстрая проверка для ключевых слов (избегаем дорогие string операции)
-    if color_str.len() <= 20 && !color_str.contains('(') {
-        return resolve_keyword(color_str);
+    if l <= 20 && !has(b, b'(') {
+        return kw(s);
     }
 
-    // Только теперь проверяем функции
-    let end_paren = color_str.len().wrapping_sub(1);
-    if end_paren == 0 || !color_str.ends_with(')') {
-        return resolve_keyword(color_str);
+    if b[l - 1] != b')' {
+        return kw(s);
     }
 
-    let (func, has_alpha, content) = if color_str.starts_with("rgba(") {
-        ("rgb", true, &color_str[5..color_str.len() - 1])
-    } else if color_str.starts_with("rgb(") {
-        ("rgb", false, &color_str[4..color_str.len() - 1])
-    } else if color_str.starts_with("hsla(") {
-        ("hsl", true, &color_str[5..color_str.len() - 1])
-    } else if color_str.starts_with("hsl(") {
-        ("hsl", false, &color_str[4..color_str.len() - 1])
+    let (f, a, cs, ce) = if l >= 5 {
+        if b[0] == b'r' && b[1] == b'g' && b[2] == b'b' {
+            if b[3] == b'a' && l >= 6 && b[4] == b'(' {
+                ("rgb", true, 5, l - 1)
+            } else if b[3] == b'(' {
+                ("rgb", false, 4, l - 1)
+            } else {
+                return kw(s);
+            }
+        } else if b[0] == b'h' && b[1] == b's' && b[2] == b'l' {
+            if b[3] == b'a' && l >= 6 && b[4] == b'(' {
+                ("hsl", true, 5, l - 1)
+            } else if b[3] == b'(' {
+                ("hsl", false, 4, l - 1)
+            } else {
+                return kw(s);
+            }
+        } else {
+            return kw(s);
+        }
     } else {
-        return resolve_keyword(color_str);
+        return kw(s);
     };
 
-    let parts = split_params(content);
+    let c = std::str::from_utf8(&b[cs..ce]).ok()?;
+    let pt = split(c);
 
-    if func == "rgb" {
-        if has_alpha {
-            if !parts[1].is_empty() && parts[2].is_empty() {
-                if let Some(base) = resolve_keyword(parts[0]) {
-                    let a = parse_alpha_value(parts[1].as_bytes())?;
+    if f == "rgb" {
+        if a {
+            if !pt[1].is_empty() && pt[2].is_empty() {
+                if let Some(base) = kw(pt[0]) {
+                    let al = alpha(pt[1].as_bytes())?;
                     return Some(Color {
                         r: base.r,
                         g: base.g,
                         b: base.b,
-                        a,
+                        a: al,
                     });
                 }
             }
-            if parts[3].is_empty() {
+            if pt[3].is_empty() {
                 return None;
             }
 
-            let r = parse_rgb_value(parts[0].as_bytes())?;
-            let g = parse_rgb_value(parts[1].as_bytes())?;
-            let b = parse_rgb_value(parts[2].as_bytes())?;
-            let a = parse_alpha_value(parts[3].as_bytes())?;
-            Some(Color { r, g, b, a })
+            let r = rgb(pt[0].as_bytes())?;
+            let g = rgb(pt[1].as_bytes())?;
+            let bl = rgb(pt[2].as_bytes())?;
+            let al = alpha(pt[3].as_bytes())?;
+            Some(Color { r, g, b: bl, a: al })
         } else {
-            if parts[2].is_empty() || !parts[3].is_empty() {
+            if pt[2].is_empty() || !pt[3].is_empty() {
                 return None;
             }
-            let r = parse_rgb_value(parts[0].as_bytes())?;
-            let g = parse_rgb_value(parts[1].as_bytes())?;
-            let b = parse_rgb_value(parts[2].as_bytes())?;
-            Some(Color { r, g, b, a: 255 })
+            let r = rgb(pt[0].as_bytes())?;
+            let g = rgb(pt[1].as_bytes())?;
+            let bl = rgb(pt[2].as_bytes())?;
+            Some(Color { r, g, b: bl, a: 255 })
         }
-    } else if has_alpha {
-        if !parts[1].is_empty() && parts[2].is_empty() {
-            if let Some(base) = resolve_keyword(parts[0]) {
-                let a = parse_alpha_value(parts[1].as_bytes())?;
+    } else if a {
+        if !pt[1].is_empty() && pt[2].is_empty() {
+            if let Some(base) = kw(pt[0]) {
+                let al = alpha(pt[1].as_bytes())?;
                 return Some(Color {
                     r: base.r,
                     g: base.g,
                     b: base.b,
-                    a,
+                    a: al,
                 });
             }
         }
-        if parts[3].is_empty() {
+        if pt[3].is_empty() {
             return None;
         }
 
-        let h = parse_hue_value(parts[0])?;
-        let s = parse_percentage(parts[1].as_bytes())?;
-        let l = parse_percentage(parts[2].as_bytes())?;
-        let (r, g, b) = hsl_to_rgb(h, s, l);
-        let a = parse_alpha_value(parts[3].as_bytes())?;
-        Some(Color { r, g, b, a })
+        let h = hue(pt[0])?;
+        let sa = pct(pt[1].as_bytes())?;
+        let li = pct(pt[2].as_bytes())?;
+        let (r, g, bl) = hsl2rgb(h, sa, li);
+        let al = alpha(pt[3].as_bytes())?;
+        Some(Color { r, g, b: bl, a: al })
     } else {
-        if parts[2].is_empty() || !parts[3].is_empty() {
+        if pt[2].is_empty() || !pt[3].is_empty() {
             return None;
         }
-        let h = parse_hue_value(parts[0])?;
-        let s = parse_percentage(parts[1].as_bytes())?;
-        let l = parse_percentage(parts[2].as_bytes())?;
-        let (r, g, b) = hsl_to_rgb(h, s, l);
-        Some(Color { r, g, b, a: 255 })
+        let h = hue(pt[0])?;
+        let sa = pct(pt[1].as_bytes())?;
+        let li = pct(pt[2].as_bytes())?;
+        let (r, g, bl) = hsl2rgb(h, sa, li);
+        Some(Color { r, g, b: bl, a: 255 })
     }
 }
 
 #[inline]
-fn can_shorten_hex(r: u8, g: u8, b: u8, a: u8) -> bool {
+fn short(r: u8, g: u8, b: u8, a: u8) -> bool {
     ((r ^ (r << 4)) | (g ^ (g << 4)) | (b ^ (b << 4)) | (a ^ (a << 4))) & 0xF0 == 0
 }
 
-static NAME_MAP: LazyLock<HashMap<u32, &'static str>> = LazyLock::new(|| {
-    let mut map = HashMap::with_capacity(KEYWORDS.len());
-    for &(name, hex_val) in KEYWORDS {
-        if let Some(color) = parse(hex_val) {
-            if color.a == 255 && name.len() <= 7 {
-                let rgb = ((color.r as u32) << 16) | ((color.g as u32) << 8) | (color.b as u32);
-                map.entry(rgb).or_insert(name);
+static NAMES: LazyLock<HashMap<u32, &'static str>> = LazyLock::new(|| {
+    let mut m = HashMap::with_capacity(KEYWORDS.len());
+    for &(n, h) in KEYWORDS {
+        if let Some(c) = parse(h) {
+            if c.a == 255 && n.len() <= 7 {
+                let rgb = ((c.r as u32) << 16) | ((c.g as u32) << 8) | (c.b as u32);
+                m.entry(rgb).or_insert(n);
             }
         }
     }
-    map
+    m
 });
 
-pub fn shorten(color: &Color) -> String {
-    if color.a != 255 {
-        return if can_shorten_hex(color.r, color.g, color.b, color.a) {
+pub fn shorten(c: &Color) -> String {
+    if c.a != 255 {
+        return if short(c.r, c.g, c.b, c.a) {
             format!(
                 "#{:x}{:x}{:x}{:x}",
-                color.r >> 4,
-                color.g >> 4,
-                color.b >> 4,
-                color.a >> 4
+                c.r >> 4,
+                c.g >> 4,
+                c.b >> 4,
+                c.a >> 4
             )
         } else {
             format!(
                 "#{:02x}{:02x}{:02x}{:02x}",
-                color.r, color.g, color.b, color.a
+                c.r, c.g, c.b, c.a
             )
         };
     }
 
-    let can_short = can_shorten_hex(color.r, color.g, color.b, 255);
-    let short_hex = format!("#{:x}{:x}{:x}", color.r >> 4, color.g >> 4, color.b >> 4);
-    let full_hex = format!("#{:02x}{:02x}{:02x}", color.r, color.g, color.b);
-
-    let mut result = if can_short && short_hex.len() < full_hex.len() {
-        short_hex
+    let mut res = if short(c.r, c.g, c.b, 255) {
+        format!("#{:x}{:x}{:x}", c.r >> 4, c.g >> 4, c.b >> 4)
     } else {
-        full_hex
+        format!("#{:02x}{:02x}{:02x}", c.r, c.g, c.b)
     };
 
-    let rgb = ((color.r as u32) << 16) | ((color.g as u32) << 8) | (color.b as u32);
-    if let Some(&name) = NAME_MAP.get(&rgb) {
-        if name.len() < result.len() {
-            result = name.to_string();
+    let rgb = ((c.r as u32) << 16) | ((c.g as u32) << 8) | (c.b as u32);
+    if let Some(&n) = NAMES.get(&rgb) {
+        if n.len() < res.len() {
+            res = n.to_string();
         }
     }
 
-    result
+    res
 }
 
-pub fn shorten_css_color(color_str: &str) -> String {
-    let trimmed = color_str.trim().to_ascii_lowercase();
+pub fn shorten_css_color(s: &str) -> String {
+    let t = s.trim().to_ascii_lowercase();
 
-    if trimmed.len() < 5 {
-        return if trimmed == "#f00" {
+    if t.len() < 5 {
+        return if t == "#f00" {
             "red".to_string()
         } else {
-            trimmed
+            t
         };
     }
 
-    match parse(&trimmed) {
-        Some(color) => shorten(&color),
-        None => color_str.to_string(),
+    match parse(&t) {
+        Some(c) => shorten(&c),
+        None => s.to_string(),
     }
 }
 
