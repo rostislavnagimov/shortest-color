@@ -2,7 +2,7 @@
 name = "shortest-color"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.60.0"
+rust-version = "1.80.0"
 description = "A fast CSS color parser and shortener that converts colors to their shortest possible representation"
 license = "MIT OR Apache-2.0"
 authors = ["Rostislav Nagimov <rostislav.nagimov@gmail.com>"]

@@ -59,7 +59,8 @@ const HEX: [u8; 128] = {
 
 #[inline]
 fn hex(b: u8) -> Option<u8> {
-    HEX.get(b as usize).and_then(|&v| if v > 15 { None } else { Some(v) })
+    HEX.get(b as usize)
+        .and_then(|&v| if v > 15 { None } else { Some(v) })
 }
 
 #[inline]
@@ -79,11 +80,11 @@ fn rgb(b: &[u8]) -> Option<u8> {
     }
 
     let has_dot = b.iter().any(|&x| x == b'.');
-    
+
     if !has_dot {
         let mut r = 0u16;
         for &c in b {
-            if c < b'0' || c > b'9' {
+            if !(b'0'..=b'9').contains(&c) {
                 return None;
             }
             r = r * 10 + (c - b'0') as u16;
@@ -102,15 +103,21 @@ fn rgb(b: &[u8]) -> Option<u8> {
             b'0'..=b'9' => {
                 if d > 0 {
                     d += 1;
-                    if d > 4 { break; }
+                    if d > 4 {
+                        break;
+                    }
                     r += (c - b'0') as f32 / (10u32.pow(d - 1)) as f32;
                 } else {
                     r = r * 10.0 + (c - b'0') as f32;
-                    if r > 255.9 { return None; }
+                    if r > 255.9 {
+                        return None;
+                    }
                 }
             }
             b'.' => {
-                if d > 0 { return None; }
+                if d > 0 {
+                    return None;
+                }
                 d = 1;
             }
             _ => return None,
@@ -126,7 +133,9 @@ fn pct(b: &[u8]) -> Option<f32> {
     }
 
     let n = &b[..b.len() - 1];
-    if n.is_empty() { return None; }
+    if n.is_empty() {
+        return None;
+    }
 
     let mut r = 0.0f32;
     let mut d = 0u32;
@@ -135,7 +144,9 @@ fn pct(b: &[u8]) -> Option<f32> {
 
     if neg {
         p = 1;
-        if n.len() == 1 { return None; }
+        if n.len() == 1 {
+            return None;
+        }
     }
 
     for &c in &n[p..] {
@@ -143,14 +154,18 @@ fn pct(b: &[u8]) -> Option<f32> {
             b'0'..=b'9' => {
                 if d > 0 {
                     d += 1;
-                    if d > 3 { break; }
+                    if d > 3 {
+                        break;
+                    }
                     r += (c - b'0') as f32 / (10u32.pow(d - 1)) as f32;
                 } else {
                     r = r * 10.0 + (c - b'0') as f32;
                 }
             }
             b'.' => {
-                if d > 0 { return None; }
+                if d > 0 {
+                    return None;
+                }
                 d = 1;
             }
             _ => return None,
@@ -158,19 +173,25 @@ fn pct(b: &[u8]) -> Option<f32> {
     }
 
     let fr = if neg { -r } else { r };
-    if !(0.0..=100.0).contains(&fr) { return None; }
+    if !(0.0..=100.0).contains(&fr) {
+        return None;
+    }
     Some(fr)
 }
 
 fn alpha(b: &[u8]) -> Option<u8> {
-    if b.is_empty() { return None; }
+    if b.is_empty() {
+        return None;
+    }
 
     if b[b.len() - 1] == b'%' {
         let p = pct(b)?;
         return Some((p * 2.55 + 0.5) as u8);
     }
 
-    if b[0] == b'-' { return None; }
+    if b[0] == b'-' {
+        return None;
+    }
 
     let mut r = 0.0f32;
     let mut d = 0u32;
@@ -180,39 +201,47 @@ fn alpha(b: &[u8]) -> Option<u8> {
             b'0'..=b'9' => {
                 if d > 0 {
                     d += 1;
-                    if d > 4 { break; }
+                    if d > 4 {
+                        break;
+                    }
                     r += (c - b'0') as f32 / (10u32.pow(d - 1)) as f32;
                 } else {
                     r = r * 10.0 + (c - b'0') as f32;
                 }
             }
             b'.' => {
-                if d > 0 { return None; }
+                if d > 0 {
+                    return None;
+                }
                 d = 1;
             }
             _ => return None,
         }
     }
 
-    if r > 1.0 { return None; }
+    if r > 1.0 {
+        return None;
+    }
     Some((r * 255.0 + 0.5) as u8)
 }
 
 fn hue(s: &str) -> Option<f32> {
     let b = s.as_bytes();
     let l = b.len();
-    
-    if l == 0 { return None; }
-    
-    let (h, u) = if l >= 4 && b[l-4..] == *b"grad" {
-        (float(&s[..l-4])?, "grad")
-    } else if l >= 4 && b[l-4..] == *b"turn" {
-        (float(&s[..l-4])?, "turn")
+
+    if l == 0 {
+        return None;
+    }
+
+    let (h, u) = if l >= 4 && b[l - 4..] == *b"grad" {
+        (float(&s[..l - 4])?, "grad")
+    } else if l >= 4 && b[l - 4..] == *b"turn" {
+        (float(&s[..l - 4])?, "turn")
     } else if l >= 3 {
-        if b[l-3..] == *b"deg" {
-            (float(&s[..l-3])?, "deg")
-        } else if b[l-3..] == *b"rad" {
-            (float(&s[..l-3])?, "rad")
+        if b[l - 3..] == *b"deg" {
+            (float(&s[..l - 3])?, "deg")
+        } else if b[l - 3..] == *b"rad" {
+            (float(&s[..l - 3])?, "rad")
         } else {
             (float(s)?, "")
         }
@@ -225,7 +254,9 @@ fn hue(s: &str) -> Option<f32> {
 
 fn float(s: &str) -> Option<f32> {
     let b = s.as_bytes();
-    if b.is_empty() || b.len() > 8 { return None; }
+    if b.is_empty() || b.len() > 8 {
+        return None;
+    }
 
     let mut r = 0.0f32;
     let mut d = 0u32;
@@ -234,7 +265,9 @@ fn float(s: &str) -> Option<f32> {
 
     if neg {
         p = 1;
-        if b.len() == 1 { return None; }
+        if b.len() == 1 {
+            return None;
+        }
     }
 
     for &c in &b[p..] {
@@ -242,14 +275,18 @@ fn float(s: &str) -> Option<f32> {
             b'0'..=b'9' => {
                 if d > 0 {
                     d += 1;
-                    if d > 4 { break; }
+                    if d > 4 {
+                        break;
+                    }
                     r += (c - b'0') as f32 / (10u32.pow(d - 1)) as f32;
                 } else {
                     r = r * 10.0 + (c - b'0') as f32;
                 }
             }
             b'.' => {
-                if d > 0 { return None; }
+                if d > 0 {
+                    return None;
+                }
                 d = 1;
             }
             _ => return None,
@@ -315,7 +352,7 @@ fn split(s: &str) -> [&str; 4] {
                     cnt += 1;
                 }
             }
-            
+
             i += 1;
             while i < l && (b[i] == b',' || b[i] == b' ') {
                 i += 1;
@@ -347,7 +384,9 @@ static KW: LazyLock<HashMap<&'static str, Color>> = LazyLock::new(|| {
 });
 
 fn kw(n: &str) -> Option<Color> {
-    if n.len() > 20 { return None; }
+    if n.len() > 20 {
+        return None;
+    }
     KW.get(n).copied()
 }
 
@@ -355,7 +394,9 @@ pub fn parse(s: &str) -> Option<Color> {
     let b = s.as_bytes();
     let l = b.len();
 
-    if l == 0 { return None; }
+    if l == 0 {
+        return None;
+    }
 
     if b[0] == b'#' {
         let h = &b[1..];
@@ -452,7 +493,12 @@ pub fn parse(s: &str) -> Option<Color> {
             let r = rgb(pt[0].as_bytes())?;
             let g = rgb(pt[1].as_bytes())?;
             let bl = rgb(pt[2].as_bytes())?;
-            Some(Color { r, g, b: bl, a: 255 })
+            Some(Color {
+                r,
+                g,
+                b: bl,
+                a: 255,
+            })
         }
     } else if a {
         if !pt[1].is_empty() && pt[2].is_empty() {
@@ -484,7 +530,12 @@ pub fn parse(s: &str) -> Option<Color> {
         let sa = pct(pt[1].as_bytes())?;
         let li = pct(pt[2].as_bytes())?;
         let (r, g, bl) = hsl2rgb(h, sa, li);
-        Some(Color { r, g, b: bl, a: 255 })
+        Some(Color {
+            r,
+            g,
+            b: bl,
+            a: 255,
+        })
     }
 }
 
@@ -509,18 +560,9 @@ static NAMES: LazyLock<HashMap<u32, &'static str>> = LazyLock::new(|| {
 pub fn shorten(c: &Color) -> String {
     if c.a != 255 {
         return if short(c.r, c.g, c.b, c.a) {
-            format!(
-                "#{:x}{:x}{:x}{:x}",
-                c.r >> 4,
-                c.g >> 4,
-                c.b >> 4,
-                c.a >> 4
-            )
+            format!("#{:x}{:x}{:x}{:x}", c.r >> 4, c.g >> 4, c.b >> 4, c.a >> 4)
         } else {
-            format!(
-                "#{:02x}{:02x}{:02x}{:02x}",
-                c.r, c.g, c.b, c.a
-            )
+            format!("#{:02x}{:02x}{:02x}{:02x}", c.r, c.g, c.b, c.a)
         };
     }
 
@@ -544,11 +586,7 @@ pub fn shorten_css_color(s: &str) -> String {
     let t = s.trim().to_ascii_lowercase();
 
     if t.len() < 5 {
-        return if t == "#f00" {
-            "red".to_string()
-        } else {
-            t
-        };
+        return if t == "#f00" { "red".to_string() } else { t };
     }
 
     match parse(&t) {
