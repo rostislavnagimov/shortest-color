@@ -12,13 +12,6 @@ documentation = "https://docs.rs/shortest-color"
 readme = "README.md"
 keywords = ["css", "color", "parser", "web", "optimization"]
 categories = ["web-programming", "parsing", "graphics"]
-exclude = [
-    "benches/*",
-    "tests/*", 
-    ".github/*",
-    "*.md",
-    "!README.md"
-]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
