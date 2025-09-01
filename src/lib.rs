@@ -4,10 +4,10 @@ use std::sync::LazyLock;
 #[repr(C)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub struct Color {
-    pub r: u8,
-    pub g: u8,
-    pub b: u8,
-    pub a: u8,
+    r: u8,
+    g: u8,
+    b: u8,
+    a: u8,
 }
 
 impl Color {
@@ -20,57 +20,24 @@ impl Color {
     }
 }
 
-impl std::fmt::Display for Color {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.a == 255 {
-            write!(f, "rgb({}, {}, {})", self.r, self.g, self.b)
-        } else {
-            write!(
-                f,
-                "rgba({}, {}, {}, {:.3})",
-                self.r,
-                self.g,
-                self.b,
-                self.a as f32 / 255.0
-            )
-        }
-    }
-}
-
-const HEX: [u8; 128] = {
-    let mut m = [255; 128];
-    let mut i = 48;
-    while i <= 57 {
-        m[i] = (i - 48) as u8;
-        i += 1;
-    }
-    i = 65;
-    while i <= 70 {
-        m[i] = (i - 55) as u8;
-        i += 1;
-    }
-    i = 97;
-    while i <= 102 {
-        m[i] = (i - 87) as u8;
-        i += 1;
-    }
-    m
-};
-
 #[inline]
-fn hex(b: u8) -> Option<u8> {
-    HEX.get(b as usize)
-        .and_then(|&v| if v > 15 { None } else { Some(v) })
+fn hex_digit(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        _ => None,
+    }
 }
 
 #[inline]
 fn hex2(b: &[u8], i: usize) -> Option<u8> {
-    Some((hex(b[i])? << 4) | hex(b[i + 1])?)
+    Some((hex_digit(b[i])? << 4) | hex_digit(b[i + 1])?)
 }
 
 #[inline]
 fn hex1(b: u8) -> Option<u8> {
-    let v = hex(b)?;
+    let v = hex_digit(b)?;
     Some((v << 4) | v)
 }
 
@@ -79,9 +46,15 @@ fn rgb(b: &[u8]) -> Option<u8> {
         return None;
     }
 
-    let has_dot = b.iter().any(|&x| x == b'.');
+    let mut dot_pos = None;
+    for (i, &c) in b.iter().enumerate() {
+        if c == b'.' {
+            dot_pos = Some(i);
+            break;
+        }
+    }
 
-    if !has_dot {
+    if dot_pos.is_none() {
         let mut r = 0u16;
         for &c in b {
             if !(b'0'..=b'9').contains(&c) {
@@ -331,10 +304,6 @@ fn hsl2rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
     )
 }
 
-fn has(b: &[u8], t: u8) -> bool {
-    b.iter().any(|&x| x == t)
-}
-
 fn split(s: &str) -> [&str; 4] {
     let mut p = [""; 4];
     let mut cnt = 0;
@@ -383,6 +352,7 @@ static KW: LazyLock<HashMap<&'static str, Color>> = LazyLock::new(|| {
     m
 });
 
+#[inline]
 fn kw(n: &str) -> Option<Color> {
     if n.len() > 20 {
         return None;
@@ -429,37 +399,21 @@ pub fn parse(s: &str) -> Option<Color> {
         };
     }
 
-    if l <= 20 && !has(b, b'(') {
-        return kw(s);
-    }
+    if l <= 20 && !b.contains(&b'(') {
+    return kw(s);
+}
 
     if b[l - 1] != b')' {
         return kw(s);
     }
 
-    let (f, a, cs, ce) = if l >= 5 {
-        if b[0] == b'r' && b[1] == b'g' && b[2] == b'b' {
-            if b[3] == b'a' && l >= 6 && b[4] == b'(' {
-                ("rgb", true, 5, l - 1)
-            } else if b[3] == b'(' {
-                ("rgb", false, 4, l - 1)
-            } else {
-                return kw(s);
-            }
-        } else if b[0] == b'h' && b[1] == b's' && b[2] == b'l' {
-            if b[3] == b'a' && l >= 6 && b[4] == b'(' {
-                ("hsl", true, 5, l - 1)
-            } else if b[3] == b'(' {
-                ("hsl", false, 4, l - 1)
-            } else {
-                return kw(s);
-            }
-        } else {
-            return kw(s);
-        }
-    } else {
-        return kw(s);
-    };
+let (f, a, cs, ce) = match b {
+    [b'r', b'g', b'b', b'a', b'(', ..] if l >= 6 => ("rgb", true, 5, l - 1),
+    [b'r', b'g', b'b', b'(', ..] => ("rgb", false, 4, l - 1),
+    [b'h', b's', b'l', b'a', b'(', ..] if l >= 6 => ("hsl", true, 5, l - 1),
+    [b'h', b's', b'l', b'(', ..] => ("hsl", false, 4, l - 1),
+    _ => return kw(s),
+};
 
     let c = std::str::from_utf8(&b[cs..ce]).ok()?;
     let pt = split(c);
