@@ -11,10 +11,12 @@ pub struct Color {
 }
 
 impl Color {
+    #[inline]
     pub const fn new(r: u8, g: u8, b: u8, a: u8) -> Self {
         Self { r, g, b, a }
     }
 
+    #[inline]
     pub const fn rgb(r: u8, g: u8, b: u8) -> Self {
         Self { r, g, b, a: 255 }
     }
@@ -31,28 +33,116 @@ const fn hex_digit(b: u8) -> Option<u8> {
 }
 
 #[inline]
-fn hex2(b: &[u8], i: usize) -> Option<u8> {
-    Some((hex_digit(b[i])? << 4) | hex_digit(b[i + 1])?)
+const fn hex2(b: &[u8], i: usize) -> Option<u8> {
+    if let (Some(h), Some(l)) = (hex_digit(b[i]), hex_digit(b[i + 1])) {
+        Some((h << 4) | l)
+    } else {
+        None
+    }
 }
 
 #[inline]
-fn hex1(b: u8) -> Option<u8> {
-    let v = hex_digit(b)?;
-    Some((v << 4) | v)
+const fn hex1(b: u8) -> Option<u8> {
+    if let Some(v) = hex_digit(b) {
+        Some((v << 4) | v)
+    } else {
+        None
+    }
 }
 
-fn rgb(b: &[u8]) -> Option<u8> {
-    if b.is_empty() || b.len() > 6 || b[0] == b'-' {
+fn parse_hex_direct(s: &str) -> Option<Color> {
+    let b = s.as_bytes();
+    if b.is_empty() || b[0] != b'#' {
+        return None;
+    }
+    let h = &b[1..];
+    match h.len() {
+        3 => Some(Color {
+            r: hex1(h[0])?,
+            g: hex1(h[1])?,
+            b: hex1(h[2])?,
+            a: 255,
+        }),
+        4 => Some(Color {
+            r: hex1(h[0])?,
+            g: hex1(h[1])?,
+            b: hex1(h[2])?,
+            a: hex1(h[3])?,
+        }),
+        6 => Some(Color {
+            r: hex2(h, 0)?,
+            g: hex2(h, 2)?,
+            b: hex2(h, 4)?,
+            a: 255,
+        }),
+        8 => Some(Color {
+            r: hex2(h, 0)?,
+            g: hex2(h, 2)?,
+            b: hex2(h, 4)?,
+            a: hex2(h, 6)?,
+        }),
+        _ => None,
+    }
+}
+
+fn parse_float_with_limits(b: &[u8], max_val: f32, allow_negative: bool) -> Option<f32> {
+    if b.is_empty() || b.len() > 8 {
         return None;
     }
 
-    let mut dot_pos = None;
-    for (i, &c) in b.iter().enumerate() {
-        if c == b'.' {
-            dot_pos = Some(i);
-            break;
+    let mut r = 0.0f32;
+    let mut d = 0u32;
+    let mut p = 0;
+    let neg = allow_negative && b[0] == b'-';
+
+    if neg {
+        p = 1;
+        if b.len() == 1 {
+            return None;
+        }
+    } else if !allow_negative && b[0] == b'-' {
+        return None;
+    }
+
+    for &c in &b[p..] {
+        match c {
+            b'0'..=b'9' => {
+                if d > 0 {
+                    d += 1;
+                    if d > 4 {
+                        break;
+                    }
+                    r += (c - b'0') as f32 / (10u32.pow(d - 1)) as f32;
+                } else {
+                    r = r * 10.0 + (c - b'0') as f32;
+                    if r > max_val && !neg {
+                        return None;
+                    }
+                }
+            }
+            b'.' => {
+                if d > 0 {
+                    return None;
+                }
+                d = 1;
+            }
+            _ => return None,
         }
     }
+
+    let result = if neg { -r } else { r };
+    if result > max_val || (!allow_negative && result < 0.0) {
+        return None;
+    }
+    Some(result)
+}
+
+fn rgb(b: &[u8]) -> Option<u8> {
+    if b.is_empty() || b.len() > 6 {
+        return None;
+    }
+
+    let dot_pos = b.iter().position(|&x| x == b'.');
 
     if dot_pos.is_none() {
         let mut r = 0u16;
@@ -68,35 +158,7 @@ fn rgb(b: &[u8]) -> Option<u8> {
         return Some(r as u8);
     }
 
-    let mut r = 0.0f32;
-    let mut d = 0u32;
-
-    for &c in b {
-        match c {
-            b'0'..=b'9' => {
-                if d > 0 {
-                    d += 1;
-                    if d > 4 {
-                        break;
-                    }
-                    r += (c - b'0') as f32 / (10u32.pow(d - 1)) as f32;
-                } else {
-                    r = r * 10.0 + (c - b'0') as f32;
-                    if r > 255.9 {
-                        return None;
-                    }
-                }
-            }
-            b'.' => {
-                if d > 0 {
-                    return None;
-                }
-                d = 1;
-            }
-            _ => return None,
-        }
-    }
-
+    let r = parse_float_with_limits(b, 255.9, false)?;
     Some((r + 0.5) as u8)
 }
 
@@ -106,50 +168,11 @@ fn pct(b: &[u8]) -> Option<f32> {
     }
 
     let n = &b[..b.len() - 1];
-    if n.is_empty() {
+    let r = parse_float_with_limits(n, 100.0, true)?;
+    if !(0.0..=100.0).contains(&r) {
         return None;
     }
-
-    let mut r = 0.0f32;
-    let mut d = 0u32;
-    let mut p = 0;
-    let neg = n[0] == b'-';
-
-    if neg {
-        p = 1;
-        if n.len() == 1 {
-            return None;
-        }
-    }
-
-    for &c in &n[p..] {
-        match c {
-            b'0'..=b'9' => {
-                if d > 0 {
-                    d += 1;
-                    if d > 3 {
-                        break;
-                    }
-                    r += (c - b'0') as f32 / (10u32.pow(d - 1)) as f32;
-                } else {
-                    r = r * 10.0 + (c - b'0') as f32;
-                }
-            }
-            b'.' => {
-                if d > 0 {
-                    return None;
-                }
-                d = 1;
-            }
-            _ => return None,
-        }
-    }
-
-    let fr = if neg { -r } else { r };
-    if !(0.0..=100.0).contains(&fr) {
-        return None;
-    }
-    Some(fr)
+    Some(r)
 }
 
 fn alpha(b: &[u8]) -> Option<u8> {
@@ -162,39 +185,7 @@ fn alpha(b: &[u8]) -> Option<u8> {
         return Some((p * 2.55 + 0.5) as u8);
     }
 
-    if b[0] == b'-' {
-        return None;
-    }
-
-    let mut r = 0.0f32;
-    let mut d = 0u32;
-
-    for &c in b {
-        match c {
-            b'0'..=b'9' => {
-                if d > 0 {
-                    d += 1;
-                    if d > 4 {
-                        break;
-                    }
-                    r += (c - b'0') as f32 / (10u32.pow(d - 1)) as f32;
-                } else {
-                    r = r * 10.0 + (c - b'0') as f32;
-                }
-            }
-            b'.' => {
-                if d > 0 {
-                    return None;
-                }
-                d = 1;
-            }
-            _ => return None,
-        }
-    }
-
-    if r > 1.0 {
-        return None;
-    }
+    let r = parse_float_with_limits(b, 1.0, false)?;
     Some((r * 255.0 + 0.5) as u8)
 }
 
@@ -206,80 +197,19 @@ fn hue(s: &str) -> Option<f32> {
         return None;
     }
 
-    let (h, u) = if l >= 4 && b[l - 4..] == *b"grad" {
-        (float(&s[..l - 4])?, "grad")
-    } else if l >= 4 && b[l - 4..] == *b"turn" {
-        (float(&s[..l - 4])?, "turn")
-    } else if l >= 3 {
-        if b[l - 3..] == *b"deg" {
-            (float(&s[..l - 3])?, "deg")
-        } else if b[l - 3..] == *b"rad" {
-            (float(&s[..l - 3])?, "rad")
-        } else {
-            (float(s)?, "")
-        }
-    } else {
-        (float(s)?, "")
+    let (num_part, multiplier) = match (l >= 4, l >= 3) {
+        (true, _) if b.ends_with(b"grad") => (&s[..l-4], 0.9),
+        (true, _) if b.ends_with(b"turn") => (&s[..l-4], 360.0),
+        (_, true) if b.ends_with(b"deg") => (&s[..l-3], 1.0),
+        (_, true) if b.ends_with(b"rad") => (&s[..l-3], 57.295_78),
+        _ => (s, 1.0),
     };
 
-    Some(norm(h, u))
-}
-
-fn float(s: &str) -> Option<f32> {
-    let b = s.as_bytes();
-    if b.is_empty() || b.len() > 8 {
-        return None;
-    }
-
-    let mut r = 0.0f32;
-    let mut d = 0u32;
-    let mut p = 0;
-    let neg = b[0] == b'-';
-
-    if neg {
-        p = 1;
-        if b.len() == 1 {
-            return None;
-        }
-    }
-
-    for &c in &b[p..] {
-        match c {
-            b'0'..=b'9' => {
-                if d > 0 {
-                    d += 1;
-                    if d > 4 {
-                        break;
-                    }
-                    r += (c - b'0') as f32 / (10u32.pow(d - 1)) as f32;
-                } else {
-                    r = r * 10.0 + (c - b'0') as f32;
-                }
-            }
-            b'.' => {
-                if d > 0 {
-                    return None;
-                }
-                d = 1;
-            }
-            _ => return None,
-        }
-    }
-
-    Some(if neg { -r } else { r })
+    let h = parse_float_with_limits(num_part.as_bytes(), f32::MAX, true)?;
+    Some(((h * multiplier % 360.0) + 360.0) % 360.0)
 }
 
 #[inline]
-fn norm(v: f32, u: &str) -> f32 {
-    let deg = match u {
-        "rad" => v * 57.295_78,
-        "grad" => v * 0.9,
-        "turn" => v * 360.0,
-        _ => v,
-    };
-    ((deg % 360.0) + 360.0) % 360.0
-}
-
 fn hsl2rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
     let s = s * 0.01;
     let l = l * 0.01;
@@ -315,11 +245,19 @@ fn split(s: &str) -> [&str; 4] {
     while i < l && cnt < 4 {
         if b[i] == b',' || b[i] == b' ' {
             if i > st {
-    p[cnt] = std::str::from_utf8(&b[st..i]).unwrap().trim();
-    if !p[cnt].is_empty() {
-        cnt += 1;
-    }
-}
+                let mut start = st;
+                let mut end = i;
+                while start < end && b[start] == b' ' { 
+                    start += 1; 
+                }
+                while end > start && b[end-1] == b' ' { 
+                    end -= 1; 
+                }
+                if start < end {
+                    p[cnt] = unsafe { std::str::from_utf8_unchecked(&b[start..end]) };
+                    cnt += 1;
+                }
+            }
 
             i += 1;
             while i < l && (b[i] == b',' || b[i] == b' ') {
@@ -332,9 +270,16 @@ fn split(s: &str) -> [&str; 4] {
     }
 
     if st < l && cnt < 4 {
-        let part = std::str::from_utf8(&b[st..]).unwrap().trim();
-        if !part.is_empty() {
-            p[cnt] = part;
+        let mut start = st;
+        let mut end = l;
+        while start < end && b[start] == b' ' { 
+            start += 1; 
+        }
+        while end > start && b[end-1] == b' ' { 
+            end -= 1; 
+        }
+        if start < end {
+            p[cnt] = unsafe { std::str::from_utf8_unchecked(&b[start..end]) };
         }
     }
 
@@ -344,7 +289,7 @@ fn split(s: &str) -> [&str; 4] {
 static KW: LazyLock<HashMap<&'static str, Color>> = LazyLock::new(|| {
     let mut m = HashMap::with_capacity(KEYWORDS.len());
     for &(n, h) in KEYWORDS {
-        if let Some(c) = parse(h) {
+        if let Some(c) = parse_hex_direct(h) {
             m.insert(n, c);
         }
     }
@@ -399,20 +344,20 @@ pub fn parse(s: &str) -> Option<Color> {
     }
 
     if l <= 20 && !b.contains(&b'(') {
-    return kw(s);
-}
+        return kw(s);
+    }
 
     if b[l - 1] != b')' {
         return kw(s);
     }
 
-let (f, a, cs, ce) = match b {
-    [b'r', b'g', b'b', b'a', b'(', ..] if l >= 6 => ("rgb", true, 5, l - 1),
-    [b'r', b'g', b'b', b'(', ..] => ("rgb", false, 4, l - 1),
-    [b'h', b's', b'l', b'a', b'(', ..] if l >= 6 => ("hsl", true, 5, l - 1),
-    [b'h', b's', b'l', b'(', ..] => ("hsl", false, 4, l - 1),
-    _ => return kw(s),
-};
+    let (f, a, cs, ce) = match b {
+        [b'r', b'g', b'b', b'a', b'(', ..] if l >= 6 => ("rgb", true, 5, l - 1),
+        [b'r', b'g', b'b', b'(', ..] => ("rgb", false, 4, l - 1),
+        [b'h', b's', b'l', b'a', b'(', ..] if l >= 6 => ("hsl", true, 5, l - 1),
+        [b'h', b's', b'l', b'(', ..] => ("hsl", false, 4, l - 1),
+        _ => return kw(s),
+    };
 
     let c = std::str::from_utf8(&b[cs..ce]).ok()?;
     let pt = split(c);
@@ -493,14 +438,14 @@ let (f, a, cs, ce) = match b {
 }
 
 #[inline]
-fn short(r: u8, g: u8, b: u8, a: u8) -> bool {
+const fn short(r: u8, g: u8, b: u8, a: u8) -> bool {
     ((r ^ (r << 4)) | (g ^ (g << 4)) | (b ^ (b << 4)) | (a ^ (a << 4))) & 0xF0 == 0
 }
 
 static NAMES: LazyLock<HashMap<u32, &'static str>> = LazyLock::new(|| {
     let mut m = HashMap::with_capacity(KEYWORDS.len());
     for &(n, h) in KEYWORDS {
-        if let Some(c) = parse(h) {
+        if let Some(c) = parse_hex_direct(h) {
             if c.a == 255 && n.len() <= 7 {
                 let rgb = ((c.r as u32) << 16) | ((c.g as u32) << 8) | (c.b as u32);
                 m.entry(rgb).or_insert(n);
