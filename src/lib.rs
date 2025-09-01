@@ -21,7 +21,7 @@ impl Color {
 }
 
 #[inline]
-fn hex_digit(b: u8) -> Option<u8> {
+const fn hex_digit(b: u8) -> Option<u8> {
     match b {
         b'0'..=b'9' => Some(b - b'0'),
         b'A'..=b'F' => Some(b - b'A' + 10),
@@ -315,12 +315,11 @@ fn split(s: &str) -> [&str; 4] {
     while i < l && cnt < 4 {
         if b[i] == b',' || b[i] == b' ' {
             if i > st {
-                let part = std::str::from_utf8(&b[st..i]).unwrap().trim();
-                if !part.is_empty() {
-                    p[cnt] = part;
-                    cnt += 1;
-                }
-            }
+    p[cnt] = std::str::from_utf8(&b[st..i]).unwrap().trim();
+    if !p[cnt].is_empty() {
+        cnt += 1;
+    }
+}
 
             i += 1;
             while i < l && (b[i] == b',' || b[i] == b' ') {
