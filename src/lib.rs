@@ -41,7 +41,11 @@ const fn hex2(b: &[u8], i: usize) -> Option<u8> {
 #[inline(always)]
 const fn hex1(b: u8) -> Option<u8> {
     let v = HEX_TABLE[b as usize];
-    if v == 255 { None } else { Some((v << 4) | v) }
+    if v == 255 {
+        None
+    } else {
+        Some((v << 4) | v)
+    }
 }
 
 fn parse_float_with_limits(b: &[u8], max_val: f32, allow_negative: bool) -> Option<f32> {
@@ -195,13 +199,18 @@ fn hsl2rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
 fn split(s: &str) -> [&str; 4] {
     let mut parts = [""; 4];
     let mut i = 0;
-    
-    for part in s.split(&[',', ' '] as &[char])
+
+    for part in s
+        .split(&[',', ' '] as &[char])
         .filter_map(|p| {
             let trimmed = p.trim();
-            if trimmed.is_empty() { None } else { Some(trimmed) }
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed)
+            }
         })
-        .take(4) 
+        .take(4)
     {
         parts[i] = part;
         i += 1;
@@ -370,10 +379,10 @@ fn parse(s: &str) -> Option<Color> {
 
 #[inline(always)]
 const fn short(r: u8, g: u8, b: u8, a: u8) -> bool {
-    (r & 0x0F) * 0x11 == r && 
-    (g & 0x0F) * 0x11 == g && 
-    (b & 0x0F) * 0x11 == b && 
-    (a & 0x0F) * 0x11 == a
+    (r & 0x0F) * 0x11 == r
+        && (g & 0x0F) * 0x11 == g
+        && (b & 0x0F) * 0x11 == b
+        && (a & 0x0F) * 0x11 == a
 }
 
 static NAMES: LazyLock<HashMap<u32, &'static str>> = LazyLock::new(|| {
@@ -399,14 +408,14 @@ fn shorten(c: &Color) -> String {
     }
 
     let rgb = ((c.r as u32) << 16) | ((c.g as u32) << 8) | (c.b as u32);
-    
+
     if let Some(&name) = NAMES.get(&rgb) {
         let hex_len = if short(c.r, c.g, c.b, 255) { 4 } else { 7 };
         if name.len() < hex_len {
             return name.to_string();
         }
     }
-    
+
     if short(c.r, c.g, c.b, 255) {
         format!("#{:x}{:x}{:x}", c.r >> 4, c.g >> 4, c.b >> 4)
     } else {
