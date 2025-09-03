@@ -110,7 +110,7 @@ fn rgb(b: &[u8]) -> Option<u8> {
     if dot_pos.is_none() {
         let mut r = 0u16;
         for &c in b {
-            if !(b'0'..=b'9').contains(&c) {
+            if !c.is_ascii_digit() {
                 return None;
             }
             r = r * 10 + (c - b'0') as u16;
@@ -198,9 +198,8 @@ fn hsl2rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
 
 fn split(s: &str) -> [&str; 4] {
     let mut parts = [""; 4];
-    let mut i = 0;
 
-    for part in s
+    for (i, part) in s
         .split(&[',', ' '] as &[char])
         .filter_map(|p| {
             let trimmed = p.trim();
@@ -211,9 +210,9 @@ fn split(s: &str) -> [&str; 4] {
             }
         })
         .take(4)
+        .enumerate()
     {
         parts[i] = part;
-        i += 1;
     }
     parts
 }
