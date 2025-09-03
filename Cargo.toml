@@ -13,6 +13,8 @@ readme = "README.md"
 keywords = ["css", "color", "parser", "web", "optimization"]
 categories = ["web-programming", "parsing", "graphics"]
 
+exclude = ["benches/", "tests/"]
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 
@@ -25,9 +27,11 @@ harness = false
 
 [profile.release]
 opt-level = 3
-lto = "thin"
+lto = "fat"
 codegen-units = 1
 panic = "abort"
+strip = true
+overflow-checks = false
 
 [profile.bench]
 inherits = "release"
@@ -37,9 +41,3 @@ debug = true
 opt-level = 0
 debug = true
 overflow-checks = true
-
-[profile.release-max]
-inherits = "release"
-lto = "fat"
-codegen-units = 1
-panic = "abort"
