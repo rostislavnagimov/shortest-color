@@ -26,11 +26,12 @@ harness = false
 [dependencies]
 
 [profile.release]
-opt-level = "z"
-lto = "fat" 
+opt-level = 3
+lto = "fat"
 codegen-units = 1
 panic = "abort"
 strip = true
+overflow-checks = false
 
 [profile.bench]
 inherits = "release"
