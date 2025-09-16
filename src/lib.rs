@@ -10,27 +10,27 @@ struct Color {
     a: u8,
 }
 
-static HEX_TABLE: [u8; 256] = {
-    const INVALID: u8 = 255;
-    let mut table = [INVALID; 256];
+static H: [u8; 256] = {
+    const I: u8 = 255;
+    let mut t = [I; 256];
     let mut i = 0;
     while i < 10 {
-        table[(b'0' + i) as usize] = i;
+        t[(b'0' + i) as usize] = i;
         i += 1;
     }
     let mut i = 0;
     while i < 6 {
-        table[(b'A' + i) as usize] = 10 + i;
-        table[(b'a' + i) as usize] = 10 + i;
+        t[(b'A' + i) as usize] = 10 + i;
+        t[(b'a' + i) as usize] = 10 + i;
         i += 1;
     }
-    table
+    t
 };
 
 #[inline(always)]
-const fn hex2(b: &[u8], i: usize) -> Option<u8> {
-    let h = HEX_TABLE[b[i] as usize];
-    let l = HEX_TABLE[b[i + 1] as usize];
+const fn h2(b: &[u8], i: usize) -> Option<u8> {
+    let h = H[b[i] as usize];
+    let l = H[b[i + 1] as usize];
     if h == 255 || l == 255 {
         None
     } else {
@@ -39,8 +39,8 @@ const fn hex2(b: &[u8], i: usize) -> Option<u8> {
 }
 
 #[inline(always)]
-const fn hex1(b: u8) -> Option<u8> {
-    let v = HEX_TABLE[b as usize];
+const fn h1(b: u8) -> Option<u8> {
+    let v = H[b as usize];
     if v == 255 {
         None
     } else {
@@ -48,7 +48,7 @@ const fn hex1(b: u8) -> Option<u8> {
     }
 }
 
-fn parse_float_with_limits(b: &[u8], max_val: f32, allow_negative: bool) -> Option<f32> {
+fn pf(b: &[u8], m: f32, n: bool) -> Option<f32> {
     if b.is_empty() || b.len() > 8 {
         return None;
     }
@@ -56,14 +56,14 @@ fn parse_float_with_limits(b: &[u8], max_val: f32, allow_negative: bool) -> Opti
     let mut r = 0.0f32;
     let mut d = 0u32;
     let mut p = 0;
-    let neg = allow_negative && b[0] == b'-';
+    let neg = n && b[0] == b'-';
 
     if neg {
         p = 1;
         if b.len() == 1 {
             return None;
         }
-    } else if !allow_negative && b[0] == b'-' {
+    } else if !n && b[0] == b'-' {
         return None;
     }
 
@@ -78,7 +78,7 @@ fn parse_float_with_limits(b: &[u8], max_val: f32, allow_negative: bool) -> Opti
                     r += (c - b'0') as f32 / (10u32.pow(d - 1)) as f32;
                 } else {
                     r = r * 10.0 + (c - b'0') as f32;
-                    if r > max_val && !neg {
+                    if r > m && !neg {
                         return None;
                     }
                 }
@@ -93,11 +93,11 @@ fn parse_float_with_limits(b: &[u8], max_val: f32, allow_negative: bool) -> Opti
         }
     }
 
-    let result = if neg { -r } else { r };
-    if result > max_val || (!allow_negative && result < 0.0) {
+    let res = if neg { -r } else { r };
+    if res > m || (!n && res < 0.0) {
         return None;
     }
-    Some(result)
+    Some(res)
 }
 
 fn rgb(b: &[u8]) -> Option<u8> {
@@ -105,9 +105,9 @@ fn rgb(b: &[u8]) -> Option<u8> {
         return None;
     }
 
-    let dot_pos = b.iter().position(|&x| x == b'.');
+    let dp = b.iter().position(|&x| x == b'.');
 
-    if dot_pos.is_none() {
+    if dp.is_none() {
         let mut r = 0u16;
         for &c in b {
             if !c.is_ascii_digit() {
@@ -121,7 +121,7 @@ fn rgb(b: &[u8]) -> Option<u8> {
         return Some(r as u8);
     }
 
-    let r = parse_float_with_limits(b, 255.9, false)?;
+    let r = pf(b, 255.9, false)?;
     Some((r + 0.5) as u8)
 }
 
@@ -131,14 +131,14 @@ fn pct(b: &[u8]) -> Option<f32> {
     }
 
     let n = &b[..b.len() - 1];
-    let r = parse_float_with_limits(n, 100.0, true)?;
+    let r = pf(n, 100.0, true)?;
     if !(0.0..=100.0).contains(&r) {
         return None;
     }
     Some(r)
 }
 
-fn alpha(b: &[u8]) -> Option<u8> {
+fn a(b: &[u8]) -> Option<u8> {
     if b.is_empty() {
         return None;
     }
@@ -148,7 +148,7 @@ fn alpha(b: &[u8]) -> Option<u8> {
         return Some((p * 2.55 + 0.5) as u8);
     }
 
-    let r = parse_float_with_limits(b, 1.0, false)?;
+    let r = pf(b, 1.0, false)?;
     Some((r * 255.0 + 0.5) as u8)
 }
 
@@ -160,7 +160,7 @@ fn hue(s: &str) -> Option<f32> {
         return None;
     }
 
-    let (num_part, multiplier) = match (l >= 4, l >= 3) {
+    let (np, mul) = match (l >= 4, l >= 3) {
         (true, _) if b.ends_with(b"grad") => (&s[..l - 4], 0.9),
         (true, _) if b.ends_with(b"turn") => (&s[..l - 4], 360.0),
         (_, true) if b.ends_with(b"deg") => (&s[..l - 3], 1.0),
@@ -168,19 +168,19 @@ fn hue(s: &str) -> Option<f32> {
         _ => (s, 1.0),
     };
 
-    let h = parse_float_with_limits(num_part.as_bytes(), f32::MAX, true)?;
-    Some(((h * multiplier % 360.0) + 360.0) % 360.0)
+    let h = pf(np.as_bytes(), f32::MAX, true)?;
+    Some(((h * mul % 360.0) + 360.0) % 360.0)
 }
 
-fn hsl2rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
+fn h2r(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
     let s = s * 0.01;
     let l = l * 0.01;
     let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
-    let h_s = h * (1.0 / 60.0);
-    let x = c * (1.0 - ((h_s % 2.0) - 1.0).abs());
+    let hs = h * (1.0 / 60.0);
+    let x = c * (1.0 - ((hs % 2.0) - 1.0).abs());
     let m = l - c * 0.5;
 
-    let (r, g, b) = match h_s as u8 {
+    let (r, g, b) = match hs as u8 {
         0 => (c, x, 0.0),
         1 => (x, c, 0.0),
         2 => (0.0, c, x),
@@ -196,38 +196,31 @@ fn hsl2rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
     )
 }
 
-fn split(s: &str) -> [&str; 4] {
-    let mut parts = [""; 4];
-
-    for (i, part) in s
-        .split(&[',', ' '] as &[char])
-        .filter_map(|p| {
-            let trimmed = p.trim();
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed)
-            }
-        })
-        .take(4)
-        .enumerate()
-    {
-        parts[i] = part;
+fn sp(s: &str) -> [&str; 4] {
+    let mut p = [""; 4];
+    let mut i = 0;
+    
+    for part in s.split(&[',', ' '] as &[char]) {
+        let t = part.trim();
+        if !t.is_empty() && i < 4 {
+            p[i] = t;
+            i += 1;
+        }
     }
-    parts
+    p
 }
 
 static KW: LazyLock<HashMap<&'static str, Color>> = LazyLock::new(|| {
-    let mut m = HashMap::with_capacity(KEYWORDS.len());
-    for &(n, h) in KEYWORDS {
-        if let Some(c) = parse_hex_color(h) {
+    let mut m = HashMap::with_capacity(K.len());
+    for &(n, h) in K {
+        if let Some(c) = ph(h) {
             m.insert(n, c);
         }
     }
     m
 });
 
-fn parse_hex_color(s: &str) -> Option<Color> {
+fn ph(s: &str) -> Option<Color> {
     let b = s.as_bytes();
     if b.is_empty() || b[0] != b'#' {
         return None;
@@ -235,28 +228,28 @@ fn parse_hex_color(s: &str) -> Option<Color> {
     let h = &b[1..];
     match h.len() {
         3 => Some(Color {
-            r: hex1(h[0])?,
-            g: hex1(h[1])?,
-            b: hex1(h[2])?,
+            r: h1(h[0])?,
+            g: h1(h[1])?,
+            b: h1(h[2])?,
             a: 255,
         }),
         4 => Some(Color {
-            r: hex1(h[0])?,
-            g: hex1(h[1])?,
-            b: hex1(h[2])?,
-            a: hex1(h[3])?,
+            r: h1(h[0])?,
+            g: h1(h[1])?,
+            b: h1(h[2])?,
+            a: h1(h[3])?,
         }),
         6 => Some(Color {
-            r: hex2(h, 0)?,
-            g: hex2(h, 2)?,
-            b: hex2(h, 4)?,
+            r: h2(h, 0)?,
+            g: h2(h, 2)?,
+            b: h2(h, 4)?,
             a: 255,
         }),
         8 => Some(Color {
-            r: hex2(h, 0)?,
-            g: hex2(h, 2)?,
-            b: hex2(h, 4)?,
-            a: hex2(h, 6)?,
+            r: h2(h, 0)?,
+            g: h2(h, 2)?,
+            b: h2(h, 4)?,
+            a: h2(h, 6)?,
         }),
         _ => None,
     }
@@ -270,16 +263,12 @@ fn kw(n: &str) -> Option<Color> {
     KW.get(n).copied()
 }
 
-fn parse(s: &str) -> Option<Color> {
+fn p(s: &str) -> Option<Color> {
     let b = s.as_bytes();
     let l = b.len();
 
-    if l == 0 {
-        return None;
-    }
-
     if b[0] == b'#' {
-        return parse_hex_color(s);
+        return ph(s);
     }
 
     if l <= 20 && !b.contains(&b'(') {
@@ -290,7 +279,7 @@ fn parse(s: &str) -> Option<Color> {
         return kw(s);
     }
 
-    let (f, a, cs, ce) = match b {
+    let (f, al, cs, ce) = match b {
         [b'r', b'g', b'b', b'a', b'(', ..] if l >= 6 => ("rgb", true, 5, l - 1),
         [b'r', b'g', b'b', b'(', ..] => ("rgb", false, 4, l - 1),
         [b'h', b's', b'l', b'a', b'(', ..] if l >= 6 => ("hsl", true, 5, l - 1),
@@ -299,13 +288,13 @@ fn parse(s: &str) -> Option<Color> {
     };
 
     let c = std::str::from_utf8(&b[cs..ce]).ok()?;
-    let pt = split(c);
+    let pt = sp(c);
 
     if f == "rgb" {
-        if a {
+        if al {
             if !pt[1].is_empty() && pt[2].is_empty() {
                 if let Some(base) = kw(pt[0]) {
-                    let al = alpha(pt[1].as_bytes())?;
+                    let al = a(pt[1].as_bytes())?;
                     return Some(Color {
                         r: base.r,
                         g: base.g,
@@ -321,7 +310,7 @@ fn parse(s: &str) -> Option<Color> {
             let r = rgb(pt[0].as_bytes())?;
             let g = rgb(pt[1].as_bytes())?;
             let bl = rgb(pt[2].as_bytes())?;
-            let al = alpha(pt[3].as_bytes())?;
+            let al = a(pt[3].as_bytes())?;
             Some(Color { r, g, b: bl, a: al })
         } else {
             if pt[2].is_empty() || !pt[3].is_empty() {
@@ -337,10 +326,10 @@ fn parse(s: &str) -> Option<Color> {
                 a: 255,
             })
         }
-    } else if a {
+    } else if al {
         if !pt[1].is_empty() && pt[2].is_empty() {
             if let Some(base) = kw(pt[0]) {
-                let al = alpha(pt[1].as_bytes())?;
+                let al = a(pt[1].as_bytes())?;
                 return Some(Color {
                     r: base.r,
                     g: base.g,
@@ -356,8 +345,8 @@ fn parse(s: &str) -> Option<Color> {
         let h = hue(pt[0])?;
         let sa = pct(pt[1].as_bytes())?;
         let li = pct(pt[2].as_bytes())?;
-        let (r, g, bl) = hsl2rgb(h, sa, li);
-        let al = alpha(pt[3].as_bytes())?;
+        let (r, g, bl) = h2r(h, sa, li);
+        let al = a(pt[3].as_bytes())?;
         Some(Color { r, g, b: bl, a: al })
     } else {
         if pt[2].is_empty() || !pt[3].is_empty() {
@@ -366,7 +355,7 @@ fn parse(s: &str) -> Option<Color> {
         let h = hue(pt[0])?;
         let sa = pct(pt[1].as_bytes())?;
         let li = pct(pt[2].as_bytes())?;
-        let (r, g, bl) = hsl2rgb(h, sa, li);
+        let (r, g, bl) = h2r(h, sa, li);
         Some(Color {
             r,
             g,
@@ -377,17 +366,17 @@ fn parse(s: &str) -> Option<Color> {
 }
 
 #[inline(always)]
-const fn short(r: u8, g: u8, b: u8, a: u8) -> bool {
+const fn sh(r: u8, g: u8, b: u8, a: u8) -> bool {
     (r & 0x0F) * 0x11 == r
         && (g & 0x0F) * 0x11 == g
         && (b & 0x0F) * 0x11 == b
         && (a & 0x0F) * 0x11 == a
 }
 
-static NAMES: LazyLock<HashMap<u32, &'static str>> = LazyLock::new(|| {
-    let mut m = HashMap::with_capacity(KEYWORDS.len());
-    for &(n, h) in KEYWORDS {
-        if let Some(c) = parse_hex_color(h) {
+static N: LazyLock<HashMap<u32, &'static str>> = LazyLock::new(|| {
+    let mut m = HashMap::with_capacity(K.len());
+    for &(n, h) in K {
+        if let Some(c) = ph(h) {
             if c.a == 255 && n.len() <= 7 {
                 let rgb = ((c.r as u32) << 16) | ((c.g as u32) << 8) | (c.b as u32);
                 m.entry(rgb).or_insert(n);
@@ -397,9 +386,9 @@ static NAMES: LazyLock<HashMap<u32, &'static str>> = LazyLock::new(|| {
     m
 });
 
-fn shorten(c: &Color) -> String {
+fn shr(c: &Color) -> String {
     if c.a != 255 {
-        return if short(c.r, c.g, c.b, c.a) {
+        return if sh(c.r, c.g, c.b, c.a) {
             format!("#{:x}{:x}{:x}{:x}", c.r >> 4, c.g >> 4, c.b >> 4, c.a >> 4)
         } else {
             format!("#{:02x}{:02x}{:02x}{:02x}", c.r, c.g, c.b, c.a)
@@ -408,14 +397,14 @@ fn shorten(c: &Color) -> String {
 
     let rgb = ((c.r as u32) << 16) | ((c.g as u32) << 8) | (c.b as u32);
 
-    if let Some(&name) = NAMES.get(&rgb) {
-        let hex_len = if short(c.r, c.g, c.b, 255) { 4 } else { 7 };
-        if name.len() < hex_len {
+    if let Some(&name) = N.get(&rgb) {
+        let hl = if sh(c.r, c.g, c.b, 255) { 4 } else { 7 };
+        if name.len() < hl {
             return name.to_string();
         }
     }
 
-    if short(c.r, c.g, c.b, 255) {
+    if sh(c.r, c.g, c.b, 255) {
         format!("#{:x}{:x}{:x}", c.r >> 4, c.g >> 4, c.b >> 4)
     } else {
         format!("#{:02x}{:02x}{:02x}", c.r, c.g, c.b)
@@ -429,13 +418,13 @@ pub fn shorten_css_color(s: &str) -> String {
         return if t == "#f00" { "red".to_string() } else { t };
     }
 
-    match parse(&t) {
-        Some(c) => shorten(&c),
+    match p(&t) {
+        Some(c) => shr(&c),
         None => s.to_string(),
     }
 }
 
-const KEYWORDS: &[(&str, &str)] = &[
+const K: &[(&str, &str)] = &[
     ("aliceblue", "#f0f8ff"),
     ("antiquewhite", "#faebd7"),
     ("aqua", "#0ff"),
