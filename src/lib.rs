@@ -196,20 +196,6 @@ fn h2r(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
     )
 }
 
-fn sp(s: &str) -> [&str; 4] {
-    let mut p = [""; 4];
-    let mut i = 0;
-    
-    for part in s.split(&[',', ' '] as &[char]) {
-        let t = part.trim();
-        if !t.is_empty() && i < 4 {
-            p[i] = t;
-            i += 1;
-        }
-    }
-    p
-}
-
 static KW: LazyLock<HashMap<&'static str, Color>> = LazyLock::new(|| {
     let mut m = HashMap::with_capacity(K.len());
     for &(n, h) in K {
@@ -255,12 +241,51 @@ fn ph(s: &str) -> Option<Color> {
     }
 }
 
-#[inline(always)]
 fn kw(n: &str) -> Option<Color> {
-    if n.len() > 20 {
-        return None;
-    }
     KW.get(n).copied()
+}
+
+fn parse_func_args(args: &[u8]) -> Option<([&[u8]; 4], usize)> {
+    let mut parts = [&[][..]; 4];
+    let mut count = 0;
+    let mut start = 0;
+    let mut in_space = true;
+    
+    for (i, &b) in args.iter().enumerate() {
+        match b {
+            b' ' | b'\t' => {
+                if !in_space && start < i {
+                    if count >= 4 { return None; }
+                    parts[count] = &args[start..i];
+                    count += 1;
+                }
+                in_space = true;
+            }
+            b',' => {
+                if !in_space && start < i {
+                    if count >= 4 { return None; }
+                    parts[count] = &args[start..i];
+                    count += 1;
+                }
+                in_space = true;
+            }
+            _ => {
+                if in_space {
+                    start = i;
+                    in_space = false;
+                }
+            }
+        }
+    }
+    
+    if !in_space && start < args.len() {
+        if count >= 4 { return None; }
+        parts[count] = &args[start..];
+        count += 1;
+    }
+    
+    if count < 2 || count > 4 { return None; }
+    Some((parts, count))
 }
 
 fn p(s: &str) -> Option<Color> {
@@ -271,97 +296,54 @@ fn p(s: &str) -> Option<Color> {
         return ph(s);
     }
 
-    if l <= 20 && !b.contains(&b'(') {
+    if !b.contains(&b'(') {
         return kw(s);
     }
 
     if b[l - 1] != b')' {
-        return kw(s);
+        return None;
     }
 
-    let (f, al, cs, ce) = match b {
-        [b'r', b'g', b'b', b'a', b'(', ..] if l >= 6 => ("rgb", true, 5, l - 1),
-        [b'r', b'g', b'b', b'(', ..] => ("rgb", false, 4, l - 1),
-        [b'h', b's', b'l', b'a', b'(', ..] if l >= 6 => ("hsl", true, 5, l - 1),
-        [b'h', b's', b'l', b'(', ..] => ("hsl", false, 4, l - 1),
-        _ => return kw(s),
+    let (func_type, has_alpha, start) = match b {
+        [b'r', b'g', b'b', b'a', b'(', ..] => (0, true, 5),
+        [b'r', b'g', b'b', b'(', ..] => (0, false, 4),
+        [b'h', b's', b'l', b'a', b'(', ..] => (1, true, 5),
+        [b'h', b's', b'l', b'(', ..] => (1, false, 4),
+        _ => return None,
     };
 
-    let c = std::str::from_utf8(&b[cs..ce]).ok()?;
-    let pt = sp(c);
+    let args = &b[start..l-1];
+    let (parts, count) = parse_func_args(args)?;
+    
+    if has_alpha && count == 2 {
+        if let Some(base) = kw(unsafe { std::str::from_utf8_unchecked(parts[0]) }) {
+            let alpha = a(parts[1])?;
+            return Some(Color { r: base.r, g: base.g, b: base.b, a: alpha });
+        }
+        return None;
+    }
 
-    if f == "rgb" {
-        if al {
-            if !pt[1].is_empty() && pt[2].is_empty() {
-                if let Some(base) = kw(pt[0]) {
-                    let al = a(pt[1].as_bytes())?;
-                    return Some(Color {
-                        r: base.r,
-                        g: base.g,
-                        b: base.b,
-                        a: al,
-                    });
-                }
-            }
-            if pt[3].is_empty() {
-                return None;
-            }
+    let expected_parts = if has_alpha { 4 } else { 3 };
+    if count != expected_parts {
+        return None;
+    }
 
-            let r = rgb(pt[0].as_bytes())?;
-            let g = rgb(pt[1].as_bytes())?;
-            let bl = rgb(pt[2].as_bytes())?;
-            let al = a(pt[3].as_bytes())?;
-            Some(Color { r, g, b: bl, a: al })
-        } else {
-            if pt[2].is_empty() || !pt[3].is_empty() {
-                return None;
-            }
-            let r = rgb(pt[0].as_bytes())?;
-            let g = rgb(pt[1].as_bytes())?;
-            let bl = rgb(pt[2].as_bytes())?;
-            Some(Color {
-                r,
-                g,
-                b: bl,
-                a: 255,
-            })
+    match func_type {
+        0 => {
+            let r = rgb(parts[0])?;
+            let g = rgb(parts[1])?;
+            let bl = rgb(parts[2])?;
+            let alpha = if has_alpha { a(parts[3])? } else { 255 };
+            Some(Color { r, g, b: bl, a: alpha })
         }
-    } else if al {
-        if !pt[1].is_empty() && pt[2].is_empty() {
-            if let Some(base) = kw(pt[0]) {
-                let al = a(pt[1].as_bytes())?;
-                return Some(Color {
-                    r: base.r,
-                    g: base.g,
-                    b: base.b,
-                    a: al,
-                });
-            }
+        _ => {
+            let h = hue(unsafe { std::str::from_utf8_unchecked(parts[0]) })?;
+            let s = pct(parts[1])?;
+            let l = pct(parts[2])?;
+            let (r, g, bl) = h2r(h, s, l);
+            let alpha = if has_alpha { a(parts[3])? } else { 255 };
+            Some(Color { r, g, b: bl, a: alpha })
         }
-        if pt[3].is_empty() {
-            return None;
-        }
-
-        let h = hue(pt[0])?;
-        let sa = pct(pt[1].as_bytes())?;
-        let li = pct(pt[2].as_bytes())?;
-        let (r, g, bl) = h2r(h, sa, li);
-        let al = a(pt[3].as_bytes())?;
-        Some(Color { r, g, b: bl, a: al })
-    } else {
-        if pt[2].is_empty() || !pt[3].is_empty() {
-            return None;
-        }
-        let h = hue(pt[0])?;
-        let sa = pct(pt[1].as_bytes())?;
-        let li = pct(pt[2].as_bytes())?;
-        let (r, g, bl) = h2r(h, sa, li);
-        Some(Color {
-            r,
-            g,
-            b: bl,
-            a: 255,
-        })
     }
 }
 
@@ -377,7 +359,7 @@ static N: LazyLock<HashMap<u32, &'static str>> = LazyLock::new(|| {
     let mut m = HashMap::with_capacity(K.len());
     for &(n, h) in K {
         if let Some(c) = ph(h) {
-            if c.a == 255 && n.len() <= 7 {
+            if c.a == 255 {
                 let rgb = ((c.r as u32) << 16) | ((c.g as u32) << 8) | (c.b as u32);
                 m.entry(rgb).or_insert(n);
             }
@@ -398,8 +380,8 @@ fn shr(c: &Color) -> String {
     let rgb = ((c.r as u32) << 16) | ((c.g as u32) << 8) | (c.b as u32);
 
     if let Some(&name) = N.get(&rgb) {
-        let hl = if sh(c.r, c.g, c.b, 255) { 4 } else { 7 };
-        if name.len() < hl {
+        let is_short = sh(c.r, c.g, c.b, 255);
+        if name.len() < if is_short { 4 } else { 7 } {
             return name.to_string();
         }
     }
