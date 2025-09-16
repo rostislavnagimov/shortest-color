@@ -54,8 +54,9 @@ fn pf(b: &[u8], m: f32, n: bool) -> Option<f32> {
     }
 
     let mut r = 0.0f32;
-    let mut d = 0u32;
-    let mut p = 0;
+    let mut has_dot = false;
+    let mut divisor = 10.0f32;
+    let p;
     let neg = n && b[0] == b'-';
 
     if neg {
@@ -63,31 +64,35 @@ fn pf(b: &[u8], m: f32, n: bool) -> Option<f32> {
         if b.len() == 1 {
             return None;
         }
-    } else if !n && b[0] == b'-' {
-        return None;
+    } else {
+        p = 0;
+        if !n && b[0] == b'-' {
+            return None;
+        }
     }
 
     for &c in &b[p..] {
         match c {
             b'0'..=b'9' => {
-                if d > 0 {
-                    d += 1;
-                    if d > 4 {
+                let digit = (c - b'0') as f32;
+                if has_dot {
+                    r += digit / divisor;
+                    divisor *= 10.0;
+                    if divisor > 10000.0 {
                         break;
                     }
-                    r += (c - b'0') as f32 / (10u32.pow(d - 1)) as f32;
                 } else {
-                    r = r * 10.0 + (c - b'0') as f32;
+                    r = r * 10.0 + digit;
                     if r > m && !neg {
                         return None;
                     }
                 }
             }
             b'.' => {
-                if d > 0 {
+                if has_dot {
                     return None;
                 }
-                d = 1;
+                has_dot = true;
             }
             _ => return None,
         }
@@ -105,15 +110,13 @@ fn rgb(b: &[u8]) -> Option<u8> {
         return None;
     }
 
-    let dp = b.iter().position(|&x| x == b'.');
-
-    if dp.is_none() {
-        let mut r = 0u16;
+    if !b.contains(&b'.') {
+        let mut r = 0u32;
         for &c in b {
             if !c.is_ascii_digit() {
                 return None;
             }
-            r = r * 10 + (c - b'0') as u16;
+            r = r * 10 + (c - b'0') as u32;
             if r > 255 {
                 return None;
             }
@@ -126,7 +129,7 @@ fn rgb(b: &[u8]) -> Option<u8> {
 }
 
 fn pct(b: &[u8]) -> Option<f32> {
-    if b.len() < 2 || b.len() > 6 || b[b.len() - 1] != b'%' {
+    if b.len() < 2 || b.len() > 6 || b.last() != Some(&b'%') {
         return None;
     }
 
@@ -143,7 +146,7 @@ fn a(b: &[u8]) -> Option<u8> {
         return None;
     }
 
-    if b[b.len() - 1] == b'%' {
+    if b.last() == Some(&b'%') {
         let p = pct(b)?;
         return Some((p * 2.55 + 0.5) as u8);
     }
@@ -152,31 +155,39 @@ fn a(b: &[u8]) -> Option<u8> {
     Some((r * 255.0 + 0.5) as u8)
 }
 
+#[inline(always)]
+fn ends_with_ignore_case(slice: &[u8], suffix: &[u8]) -> bool {
+    slice.len() >= suffix.len() && slice[slice.len() - suffix.len()..].eq_ignore_ascii_case(suffix)
+}
+
 fn hue(s: &str) -> Option<f32> {
     let b = s.as_bytes();
-    let l = b.len();
-
-    if l == 0 {
+    if b.is_empty() {
         return None;
     }
 
-    let (np, mul) = match (l >= 4, l >= 3) {
-        (true, _) if b.ends_with(b"grad") => (&s[..l - 4], 0.9),
-        (true, _) if b.ends_with(b"turn") => (&s[..l - 4], 360.0),
-        (_, true) if b.ends_with(b"deg") => (&s[..l - 3], 1.0),
-        (_, true) if b.ends_with(b"rad") => (&s[..l - 3], 57.295_78),
-        _ => (s, 1.0),
+    let (np_str, mul) = if ends_with_ignore_case(b, b"grad") {
+        (&s[..s.len() - 4], 0.9)
+    } else if ends_with_ignore_case(b, b"turn") {
+        (&s[..s.len() - 4], 360.0)
+    } else if ends_with_ignore_case(b, b"deg") {
+        (&s[..s.len() - 3], 1.0)
+    } else if ends_with_ignore_case(b, b"rad") {
+        (&s[..s.len() - 3], 57.295_78)
+    } else {
+        (s, 1.0)
     };
 
-    let h = pf(np.as_bytes(), f32::MAX, true)?;
+    let h = pf(np_str.as_bytes(), f32::MAX, true)?;
     Some(((h * mul % 360.0) + 360.0) % 360.0)
 }
+
 
 fn h2r(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
     let s = s * 0.01;
     let l = l * 0.01;
     let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
-    let hs = h * (1.0 / 60.0);
+    let hs = h / 60.0;
     let x = c * (1.0 - ((hs % 2.0) - 1.0).abs());
     let m = l - c * 0.5;
 
@@ -195,16 +206,6 @@ fn h2r(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
         ((b + m) * 255.0 + 0.5) as u8,
     )
 }
-
-static KW: LazyLock<HashMap<&'static str, Color>> = LazyLock::new(|| {
-    let mut m = HashMap::with_capacity(K.len());
-    for &(n, h) in K {
-        if let Some(c) = ph(h) {
-            m.insert(n, c);
-        }
-    }
-    m
-});
 
 fn ph(s: &str) -> Option<Color> {
     let b = s.as_bytes();
@@ -241,84 +242,78 @@ fn ph(s: &str) -> Option<Color> {
     }
 }
 
-fn kw(n: &str) -> Option<Color> {
-    KW.get(n).copied()
+fn kw_ci(name: &str) -> Option<Color> {
+    K.iter()
+        .find(|&&(n, _)| n.eq_ignore_ascii_case(name))
+        .and_then(|&(_, hex)| ph(hex))
 }
 
 fn parse_func_args(args: &[u8]) -> Option<([&[u8]; 4], usize)> {
     let mut parts = [&[][..]; 4];
     let mut count = 0;
     let mut start = 0;
-    let mut in_space = true;
-    
+    let mut in_arg = false;
+
     for (i, &b) in args.iter().enumerate() {
-        match b {
-            b' ' | b'\t' => {
-                if !in_space && start < i {
-                    if count >= 4 { return None; }
-                    parts[count] = &args[start..i];
-                    count += 1;
-                }
-                in_space = true;
-            }
-            b',' => {
-                if !in_space && start < i {
-                    if count >= 4 { return None; }
-                    parts[count] = &args[start..i];
-                    count += 1;
-                }
-                in_space = true;
-            }
-            _ => {
-                if in_space {
-                    start = i;
-                    in_space = false;
-                }
-            }
+        let is_sep = b == b' ' || b == b'\t' || b == b',';
+
+        if !is_sep && !in_arg {
+            start = i;
+            in_arg = true;
+        } else if is_sep && in_arg {
+            if count >= 4 { return None; }
+            parts[count] = &args[start..i];
+            count += 1;
+            in_arg = false;
         }
     }
-    
-    if !in_space && start < args.len() {
+
+    if in_arg {
         if count >= 4 { return None; }
         parts[count] = &args[start..];
         count += 1;
     }
     
-    if count < 2 || count > 4 { return None; }
+    if !(2..=4).contains(&count) { return None; }
     Some((parts, count))
 }
 
 fn p(s: &str) -> Option<Color> {
     let b = s.as_bytes();
-    let l = b.len();
 
     if b[0] == b'#' {
         return ph(s);
     }
 
     if !b.contains(&b'(') {
-        return kw(s);
+        return kw_ci(s);
     }
 
-    if b[l - 1] != b')' {
+    let l = b.len();
+    if b.last() != Some(&b')') {
         return None;
     }
 
-    let (func_type, has_alpha, start) = match b {
-        [b'r', b'g', b'b', b'a', b'(', ..] => (0, true, 5),
-        [b'r', b'g', b'b', b'(', ..] => (0, false, 4),
-        [b'h', b's', b'l', b'a', b'(', ..] => (1, true, 5),
-        [b'h', b's', b'l', b'(', ..] => (1, false, 4),
-        _ => return None,
+    let (func_type, has_alpha, start) = if b.len() >= 5 && b[..5].eq_ignore_ascii_case(b"rgba(") {
+        (0, true, 5)
+    } else if b.len() >= 4 && b[..4].eq_ignore_ascii_case(b"rgb(") {
+        (0, false, 4)
+    } else if b.len() >= 5 && b[..5].eq_ignore_ascii_case(b"hsla(") {
+        (1, true, 5)
+    } else if b.len() >= 4 && b[..4].eq_ignore_ascii_case(b"hsl(") {
+        (1, false, 4)
+    } else {
+        return None;
     };
 
-    let args = &b[start..l-1];
+    let args = &b[start..l - 1];
     let (parts, count) = parse_func_args(args)?;
     
     if has_alpha && count == 2 {
-        if let Some(base) = kw(unsafe { std::str::from_utf8_unchecked(parts[0]) }) {
+        let name = unsafe { std::str::from_utf8_unchecked(parts[0]) };
+        if let Some(base) = kw_ci(name) {
             let alpha = a(parts[1])?;
-            return Some(Color { r: base.r, g: base.g, b: base.b, a: alpha });
+            return Some(Color { a: alpha, ..base });
         }
         return None;
     }
@@ -327,22 +322,23 @@ fn p(s: &str) -> Option<Color> {
     if count != expected_parts {
         return None;
     }
+    
+    let alpha = if has_alpha { a(parts[3])? } else { 255 };
 
     match func_type {
         0 => {
             let r = rgb(parts[0])?;
             let g = rgb(parts[1])?;
-            let bl = rgb(parts[2])?;
-            let alpha = if has_alpha { a(parts[3])? } else { 255 };
-            Some(Color { r, g, b: bl, a: alpha })
+            let b = rgb(parts[2])?;
+            Some(Color { r, g, b, a: alpha })
         }
         _ => {
-            let h = hue(unsafe { std::str::from_utf8_unchecked(parts[0]) })?;
+            let h_str = unsafe { std::str::from_utf8_unchecked(parts[0]) };
+            let h = hue(h_str)?;
             let s = pct(parts[1])?;
             let l = pct(parts[2])?;
-            let (r, g, bl) = h2r(h, s, l);
-            let alpha = if has_alpha { a(parts[3])? } else { 255 };
-            Some(Color { r, g, b: bl, a: alpha })
+            let (r, g, b) = h2r(h, s, l);
+            Some(Color { r, g, b, a: alpha })
         }
     }
 }
@@ -355,8 +351,8 @@ const fn sh(r: u8, g: u8, b: u8, a: u8) -> bool {
         && (a & 0x0F) * 0x11 == a
 }
 
-static N: LazyLock<HashMap<u32, &'static str>> = LazyLock::new(|| {
-    let mut m = HashMap::with_capacity(K.len());
+static N_SORTED: LazyLock<Vec<(u32, &'static str)>> = LazyLock::new(|| {
+    let mut m = HashMap::new();
     for &(n, h) in K {
         if let Some(c) = ph(h) {
             if c.a == 255 {
@@ -365,8 +361,18 @@ static N: LazyLock<HashMap<u32, &'static str>> = LazyLock::new(|| {
             }
         }
     }
-    m
+    let mut vec: Vec<_> = m.into_iter().collect();
+    vec.sort_unstable_by_key(|&(rgb, _)| rgb);
+    vec
 });
+
+fn n_find(rgb: u32) -> Option<&'static str> {
+    N_SORTED
+        .binary_search_by_key(&rgb, |&(r, _)| r)
+        .ok()
+        .map(|i| N_SORTED[i].1)
+}
+
 
 fn shr(c: &Color) -> String {
     if c.a != 255 {
@@ -379,9 +385,10 @@ fn shr(c: &Color) -> String {
 
     let rgb = ((c.r as u32) << 16) | ((c.g as u32) << 8) | (c.b as u32);
 
-    if let Some(&name) = N.get(&rgb) {
-        let is_short = sh(c.r, c.g, c.b, 255);
-        if name.len() < if is_short { 4 } else { 7 } {
+    if let Some(name) = n_find(rgb) {
+        let is_short_hex = sh(c.r, c.g, c.b, 255);
+        let hex_len = if is_short_hex { 4 } else { 7 };
+        if name.len() < hex_len {
             return name.to_string();
         }
     }
@@ -394,13 +401,13 @@ fn shr(c: &Color) -> String {
 }
 
 pub fn shorten_css_color(s: &str) -> String {
-    let t = s.trim().to_ascii_lowercase();
-
-    if t.len() < 5 {
-        return if t == "#f00" { "red".to_string() } else { t };
+    let trimmed = s.trim();
+    
+    if trimmed.len() < 5 {
+        return if trimmed.eq_ignore_ascii_case("#f00") { "red".to_string() } else { trimmed.to_ascii_lowercase() };
     }
 
-    match p(&t) {
+    match p(trimmed) {
         Some(c) => shr(&c),
         None => s.to_string(),
     }
