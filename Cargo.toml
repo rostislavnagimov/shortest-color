@@ -1,29 +1,22 @@
 [package]
 name = "shortest-color"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
-rust-version = "1.80.0"
-description = "A fast CSS color parser and shortener that converts colors to their shortest possible representation"
-license = "MIT OR Apache-2.0"
-authors = ["Rostislav Nagimov <rostislav.nagimov@gmail.com>"]
+description = "Fastest color shortener"
+license = "MIT"
 repository = "https://github.com/rostislavnagimov/shortest-color"
-homepage = "https://github.com/rostislavnagimov/shortest-color"
-documentation = "https://docs.rs/shortest-color"
-readme = "README.md"
-keywords = ["css", "color", "parser", "web", "optimization"]
-categories = ["web-programming", "parsing", "graphics"]
+keywords = ["parser", "web", "parsing", "css", "utility"]
+categories = ["web-programming", "development-tools", "parsing"]
 
-exclude = ["benches/", "tests/"]
+include = ["src/lib.rs"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
 [[bench]]
-name = "performance"
+name = "p"
 path = "benches/performance.rs"
 harness = false
-
-[dependencies]
 
 [profile.release]
 opt-level = 3
@@ -32,12 +25,3 @@ codegen-units = 1
 panic = "abort"
 strip = true
 overflow-checks = false
-
-[profile.bench]
-inherits = "release"
-debug = true
-
-[profile.dev]
-opt-level = 0
-debug = true
-overflow-checks = true
