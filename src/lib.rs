@@ -260,7 +260,9 @@ fn f(args: &[u8]) -> Option<([&[u8]; 4], usize)> {
             start = i;
             in_arg = true;
         } else if is_sep && in_arg {
-            if count >= 4 { return None; }
+            if count >= 4 {
+                return None;
+            }
             parts[count] = &args[start..i];
             count += 1;
             in_arg = false;
@@ -268,12 +270,16 @@ fn f(args: &[u8]) -> Option<([&[u8]; 4], usize)> {
     }
 
     if in_arg {
-        if count >= 4 { return None; }
+        if count >= 4 {
+            return None;
+        }
         parts[count] = &args[start..];
         count += 1;
     }
-    
-    if !(2..=4).contains(&count) { return None; }
+
+    if !(2..=4).contains(&count) {
+        return None;
+    }
     Some((parts, count))
 }
 
@@ -307,7 +313,7 @@ fn g(s: &str) -> Option<C> {
 
     let args = &b[start..l - 1];
     let (parts, count) = f(args)?;
-    
+
     if has_alpha && count == 2 {
         let name = unsafe { std::str::from_utf8_unchecked(parts[0]) };
         if let Some(base) = e(name) {
@@ -321,7 +327,7 @@ fn g(s: &str) -> Option<C> {
     if count != expected_parts {
         return None;
     }
-    
+
     let alpha = if has_alpha { z(parts[3])? } else { 255 };
 
     match func_type {
@@ -399,9 +405,13 @@ fn j(c: &C) -> String {
 
 pub fn shorten_css_color(s: &str) -> String {
     let t = s.trim();
-    
+
     if t.len() < 5 {
-        return if t.eq_ignore_ascii_case("#f00") { "red".to_string() } else { t.to_ascii_lowercase() };
+        return if t.eq_ignore_ascii_case("#f00") {
+            "red".to_string()
+        } else {
+            t.to_ascii_lowercase()
+        };
     }
 
     match g(t) {
