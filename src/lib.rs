@@ -174,7 +174,7 @@ fn z(b: &[u8]) -> Option<u8> {
 fn a(slice: &[u8], suffix: &[u8]) -> bool {
     let slice_len = slice.len();
     let suffix_len = suffix.len();
-    slice_len >= suffix_len && slice[slice_len - suffix_len..].eq_ignore_ascii_case(suffix)
+    slice_len >= suffix_len && ascii_case_eq(&slice[slice_len - suffix_len..], suffix)
 }
 
 #[inline(always)]
@@ -266,7 +266,7 @@ fn d(s: &str) -> Option<C> {
 #[inline(always)]
 fn e(name: &str) -> Option<C> {
     K.iter()
-        .find(|&&(n, _)| n.eq_ignore_ascii_case(name))
+        .find(|&&(n, _)| ascii_case_eq(n.as_bytes(), name.as_bytes()))
         .and_then(|&(_, hex)| d(hex))
 }
 
@@ -327,7 +327,7 @@ fn g(s: &str) -> Option<C> {
     }
 
     let (func_type, has_alpha, start) = match &b[..3] {
-        prefix if prefix.eq_ignore_ascii_case(b"rgb") => {
+        prefix if ascii_case_eq(b"rgb", prefix) => {
             if b[3] == (b'(') {
                 (0, false, 4)
             } else if b[3] == (b'a') && b[4] == (b'(') {
@@ -336,7 +336,7 @@ fn g(s: &str) -> Option<C> {
                 return None;
             }
         }
-        prefix if prefix.eq_ignore_ascii_case(b"hsl") => {
+        prefix if ascii_case_eq(b"hsl", prefix) => {
             if b[3] == (b'(') {
                 (1, false, 4)
             } else if b[3] == (b'a') && b[4] == (b'(') {
@@ -417,29 +417,70 @@ fn i(rgb: u32) -> Option<&'static str> {
 #[inline(always)]
 fn j(c: &C) -> String {
     if c.a != 255 {
-        return if h(c.r, c.g, c.b, c.a) {
-            format!("#{:x}{:x}{:x}{:x}", c.r >> 4, c.g >> 4, c.b >> 4, c.a >> 4)
+        let short = h(c.r, c.g, c.b, c.a);
+        let mut buf = [0u8; 9];
+        let s = if short {
+            buf[0] = b'#';
+            buf[1] = hex_digit(c.r >> 4);
+            buf[2] = hex_digit(c.g >> 4);
+            buf[3] = hex_digit(c.b >> 4);
+            buf[4] = hex_digit(c.a >> 4);
+            std::str::from_utf8(&buf[..5]).unwrap()
         } else {
-            format!("#{:02x}{:02x}{:02x}{:02x}", c.r, c.g, c.b, c.a)
+            buf[0] = b'#';
+            buf[1] = hex_digit(c.r >> 4);
+            buf[2] = hex_digit(c.r & 0xF);
+            buf[3] = hex_digit(c.g >> 4);
+            buf[4] = hex_digit(c.g & 0xF);
+            buf[5] = hex_digit(c.b >> 4);
+            buf[6] = hex_digit(c.b & 0xF);
+            buf[7] = hex_digit(c.a >> 4);
+            buf[8] = hex_digit(c.a & 0xF);
+            std::str::from_utf8(&buf[..9]).unwrap()
         };
+        return s.to_string();
     }
 
     let x = ((c.r as u32) << 16) | ((c.g as u32) << 8) | (c.b as u32);
 
     if let Some(q) = i(x) {
         let is_short = h(c.r, c.g, c.b, 255);
-        let z = if is_short { 4 } else { 7 };
-        if q.len() < z {
+        let max_len = if is_short { 4 } else { 7 };
+        if q.len() < max_len {
             return q.to_string();
         }
     }
 
-    if h(c.r, c.g, c.b, 255) {
-        format!("#{:x}{:x}{:x}", c.r >> 4, c.g >> 4, c.b >> 4)
+    let short = h(c.r, c.g, c.b, 255);
+    if short {
+        let mut buf = [0u8; 4];
+        buf[0] = b'#';
+        buf[1] = hex_digit(c.r >> 4);
+        buf[2] = hex_digit(c.g >> 4);
+        buf[3] = hex_digit(c.b >> 4);
+        std::str::from_utf8(&buf).unwrap().to_string()
     } else {
-        format!("#{:02x}{:02x}{:02x}", c.r, c.g, c.b)
+        let mut buf = [0u8; 7];
+        buf[0] = b'#';
+        buf[1] = hex_digit(c.r >> 4);
+        buf[2] = hex_digit(c.r & 0xF);
+        buf[3] = hex_digit(c.g >> 4);
+        buf[4] = hex_digit(c.g & 0xF);
+        buf[5] = hex_digit(c.b >> 4);
+        buf[6] = hex_digit(c.b & 0xF);
+        std::str::from_utf8(&buf).unwrap().to_string()
     }
 }
+
+#[inline(always)]
+fn hex_digit(n: u8) -> u8 {
+    match n {
+        0..=9 => b'0' + n,
+        10..=15 => b'a' + (n - 10),
+        _ => b'0',
+    }
+}
+
 
 #[inline(always)]
 fn trim_whitespace(s: &str) -> &str {
@@ -464,7 +505,7 @@ pub fn shorten_css_color(i: impl AsRef<str>) -> String {
     let len = t.len();
 
     if len < 5 {
-        return if t.eq_ignore_ascii_case("#f00") {
+        return if ascii_case_eq(t.as_bytes(), b"#f00") {
             "red".to_string()
         } else {
             t.to_ascii_lowercase()
