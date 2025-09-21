@@ -10,27 +10,20 @@ struct C {
     a: u8,
 }
 
-static H: [u8; 256] = {
-    const I: u8 = 255;
-    let mut t = [I; 256];
-    let mut i = 0;
-    while i < 10 {
-        t[(b'0' + i) as usize] = i;
-        i += 1;
+#[inline(always)]
+const fn hex_to_value(b: u8) -> u8 {
+    match b {
+        b'0'..=b'9' => b - b'0',
+        b'A'..=b'F' => b - b'A' + 10,
+        b'a'..=b'f' => b - b'a' + 10,
+        _ => 255,
     }
-    let mut i = 0;
-    while i < 6 {
-        t[(b'A' + i) as usize] = 10 + i;
-        t[(b'a' + i) as usize] = 10 + i;
-        i += 1;
-    }
-    t
-};
+}
 
 #[inline(always)]
 const fn u(b: &[u8], i: usize) -> Option<u8> {
-    let h = H[b[i] as usize];
-    let l = H[b[i + 1] as usize];
+    let h = hex_to_value(b[i]);
+    let l = hex_to_value(b[i + 1]);
     if h == 255 || l == 255 {
         None
     } else {
@@ -40,7 +33,7 @@ const fn u(b: &[u8], i: usize) -> Option<u8> {
 
 #[inline(always)]
 const fn v(b: u8) -> Option<u8> {
-    let v = H[b as usize];
+    let v = hex_to_value(b);
     if v == 255 {
         None
     } else {
@@ -48,65 +41,57 @@ const fn v(b: u8) -> Option<u8> {
     }
 }
 
-fn w(b: &[u8], m: f32, n: bool) -> Option<f32> {
-    if b.is_empty() || b.len() > 8 {
+#[inline(always)]
+fn w(bytes: &[u8], m: f32, n: bool) -> Option<f32> {
+    let len = bytes.len();
+    if len == 0 || len > 8 {
         return None;
     }
 
     let mut r = 0.0f32;
     let mut has_dot = false;
     let mut divisor = 10.0f32;
-    let p;
-    let neg = n && b[0] == b'-';
+    let neg = n && bytes[0] == b'-';
+    let p = if neg { 
+        if len == 1 { return None; }
+        1 
+    } else { 
+        if !n && bytes[0] == b'-' { return None; }
+        0 
+    };
 
-    if neg {
-        p = 1;
-        if b.len() == 1 {
-            return None;
-        }
-    } else {
-        p = 0;
-        if !n && b[0] == b'-' {
-            return None;
-        }
-    }
-
-    for &c in &b[p..] {
+    let mut i = p;
+    while i < len {
+        let c = bytes[i];
         match c {
             b'0'..=b'9' => {
                 let digit = (c - b'0') as f32;
                 if has_dot {
                     r += digit / divisor;
                     divisor *= 10.0;
-                    if divisor > 10000.0 {
-                        break;
-                    }
+                    if divisor > 10000.0 { break; }
                 } else {
                     r = r * 10.0 + digit;
-                    if r > m && !neg {
-                        return None;
-                    }
+                    if r > m && !neg { return None; }
                 }
             }
             b'.' => {
-                if has_dot {
-                    return None;
-                }
+                if has_dot { return None; }
                 has_dot = true;
             }
             _ => return None,
         }
+        i += 1;
     }
 
     let res = if neg { -r } else { r };
-    if res > m || (!n && res < 0.0) {
-        return None;
-    }
-    Some(res)
+    if res > m || (!n && res < 0.0) { None } else { Some(res) }
 }
 
+#[inline(always)]
 fn x(b: &[u8]) -> Option<u8> {
-    if b.is_empty() || b.len() > 6 {
+    let len = b.len();
+    if len == 0 || len > 6 {
         return None;
     }
 
@@ -128,12 +113,14 @@ fn x(b: &[u8]) -> Option<u8> {
     Some((r + 0.5) as u8)
 }
 
+#[inline(always)]
 fn y(b: &[u8]) -> Option<f32> {
-    if b.len() < 2 || b.len() > 6 || b.last() != Some(&b'%') {
+    let len = b.len();
+    if len < 2 || len > 6 || b[len - 1] != b'%' {
         return None;
     }
 
-    let n = &b[..b.len() - 1];
+    let n = &b[..len - 1];
     let r = w(n, 100.0, true)?;
     if !(0.0..=100.0).contains(&r) {
         return None;
@@ -141,12 +128,14 @@ fn y(b: &[u8]) -> Option<f32> {
     Some(r)
 }
 
+#[inline(always)]
 fn z(b: &[u8]) -> Option<u8> {
-    if b.is_empty() {
+    let len = b.len();
+    if len == 0 {
         return None;
     }
 
-    if b.last() == Some(&b'%') {
+    if b[len - 1] == b'%' {
         let p = y(b)?;
         return Some((p * 2.55 + 0.5) as u8);
     }
@@ -157,23 +146,27 @@ fn z(b: &[u8]) -> Option<u8> {
 
 #[inline(always)]
 fn a(slice: &[u8], suffix: &[u8]) -> bool {
-    slice.len() >= suffix.len() && slice[slice.len() - suffix.len()..].eq_ignore_ascii_case(suffix)
+    let slice_len = slice.len();
+    let suffix_len = suffix.len();
+    slice_len >= suffix_len && slice[slice_len - suffix_len..].eq_ignore_ascii_case(suffix)
 }
 
+#[inline(always)]
 fn m(s: &str) -> Option<f32> {
-    let b = s.as_bytes();
-    if b.is_empty() {
+    let bytes = s.as_bytes();
+    let len = bytes.len();
+    if len == 0 {
         return None;
     }
 
-    let (np_str, mul) = if a(b, b"grad") {
-        (&s[..s.len() - 4], 0.9)
-    } else if a(b, b"turn") {
-        (&s[..s.len() - 4], 360.0)
-    } else if a(b, b"deg") {
-        (&s[..s.len() - 3], 1.0)
-    } else if a(b, b"rad") {
-        (&s[..s.len() - 3], 57.295_78)
+    let (np_str, mul) = if a(bytes, b"grad") {
+        (&s[..len - 4], 0.9)
+    } else if a(bytes, b"turn") {
+        (&s[..len - 4], 360.0)
+    } else if a(bytes, b"deg") {
+        (&s[..len - 3], 1.0)
+    } else if a(bytes, b"rad") {
+        (&s[..len - 3], 57.295_78)
     } else {
         (s, 1.0)
     };
@@ -182,6 +175,7 @@ fn m(s: &str) -> Option<f32> {
     Some(((h * mul % 360.0) + 360.0) % 360.0)
 }
 
+#[inline(always)]
 fn c(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
     let s = s * 0.01;
     let l = l * 0.01;
@@ -206,9 +200,11 @@ fn c(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
     )
 }
 
+#[inline(always)]
 fn d(s: &str) -> Option<C> {
     let b = s.as_bytes();
-    if b.is_empty() || b[0] != b'#' {
+    let len = b.len();
+    if len == 0 || b[0] != b'#' {
         return None;
     }
     let h = &b[1..];
@@ -241,19 +237,23 @@ fn d(s: &str) -> Option<C> {
     }
 }
 
+#[inline(always)]
 fn e(name: &str) -> Option<C> {
     K.iter()
         .find(|&&(n, _)| n.eq_ignore_ascii_case(name))
         .and_then(|&(_, hex)| d(hex))
 }
 
+#[inline(always)]
 fn f(args: &[u8]) -> Option<([&[u8]; 4], usize)> {
     let mut parts = [&[][..]; 4];
     let mut count = 0;
     let mut start = 0;
     let mut in_arg = false;
+    let len = args.len();
 
-    for (i, &b) in args.iter().enumerate() {
+    for i in 0..len {
+        let b = args[i];
         let is_sep = b == b' ' || b == b'\t' || b == b',';
 
         if !is_sep && !in_arg {
@@ -283,8 +283,10 @@ fn f(args: &[u8]) -> Option<([&[u8]; 4], usize)> {
     Some((parts, count))
 }
 
+#[inline(always)]
 fn g(s: &str) -> Option<C> {
     let b = s.as_bytes();
+    let len = b.len();
 
     if b[0] == b'#' {
         return d(s);
@@ -294,28 +296,27 @@ fn g(s: &str) -> Option<C> {
         return e(s);
     }
 
-    let l = b.len();
-    if b.last() != Some(&b')') {
+    if b[len - 1] != b')' {
         return None;
     }
 
-    let (func_type, has_alpha, start) = if b.len() >= 5 && b[..5].eq_ignore_ascii_case(b"rgba(") {
+    let (func_type, has_alpha, start) = if len >= 5 && b[..5].eq_ignore_ascii_case(b"rgba(") {
         (0, true, 5)
-    } else if b.len() >= 4 && b[..4].eq_ignore_ascii_case(b"rgb(") {
+    } else if len >= 4 && b[..4].eq_ignore_ascii_case(b"rgb(") {
         (0, false, 4)
-    } else if b.len() >= 5 && b[..5].eq_ignore_ascii_case(b"hsla(") {
+    } else if len >= 5 && b[..5].eq_ignore_ascii_case(b"hsla(") {
         (1, true, 5)
-    } else if b.len() >= 4 && b[..4].eq_ignore_ascii_case(b"hsl(") {
+    } else if len >= 4 && b[..4].eq_ignore_ascii_case(b"hsl(") {
         (1, false, 4)
     } else {
         return None;
     };
 
-    let args = &b[start..l - 1];
+    let args = &b[start..len - 1];
     let (parts, count) = f(args)?;
 
     if has_alpha && count == 2 {
-        let name = unsafe { std::str::from_utf8_unchecked(parts[0]) };
+        let name = std::str::from_utf8(parts[0]).ok()?;
         if let Some(base) = e(name) {
             let alpha = z(parts[1])?;
             return Some(C { a: alpha, ..base });
@@ -338,7 +339,7 @@ fn g(s: &str) -> Option<C> {
             Some(C { r, g, b, a: alpha })
         }
         _ => {
-            let h_str = unsafe { std::str::from_utf8_unchecked(parts[0]) };
+            let h_str = std::str::from_utf8(parts[0]).ok()?;
             let h = m(h_str)?;
             let s = y(parts[1])?;
             let l = y(parts[2])?;
@@ -371,12 +372,14 @@ static N: LazyLock<Vec<(u32, &'static str)>> = LazyLock::new(|| {
     vec
 });
 
+#[inline(always)]
 fn i(rgb: u32) -> Option<&'static str> {
     N.binary_search_by_key(&rgb, |&(r, _)| r)
         .ok()
         .map(|i| N[i].1)
 }
 
+#[inline(always)]
 fn j(c: &C) -> String {
     if c.a != 255 {
         return if h(c.r, c.g, c.b, c.a) {
@@ -389,8 +392,8 @@ fn j(c: &C) -> String {
     let x = ((c.r as u32) << 16) | ((c.g as u32) << 8) | (c.b as u32);
 
     if let Some(q) = i(x) {
-        let i = h(c.r, c.g, c.b, 255);
-        let z = if i { 4 } else { 7 };
+        let is_short = h(c.r, c.g, c.b, 255);
+        let z = if is_short { 4 } else { 7 };
         if q.len() < z {
             return q.to_string();
         }
@@ -403,10 +406,29 @@ fn j(c: &C) -> String {
     }
 }
 
-pub fn shorten_css_color(s: impl AsRef<str>) -> String {
-    let t = s.as_ref().trim();
+#[inline(always)]
+fn trim_whitespace(s: &str) -> &str {
+    let bytes = s.as_bytes();
+    let mut start = 0;
+    let mut end = bytes.len();
+    
+    while start < end && matches!(bytes[start], b' ' | b'\t' | b'\n' | b'\r') {
+        start += 1;
+    }
+    
+    while end > start && matches!(bytes[end - 1], b' ' | b'\t' | b'\n' | b'\r') {
+        end -= 1;
+    }
+    
+    &s[start..end]
+}
 
-    if t.len() < 5 {
+pub fn shorten_css_color(s: impl AsRef<str>) -> String {
+    let s = s.as_ref();
+    let t = trim_whitespace(s);
+    let len = t.len();
+
+    if len < 5 {
         return if t.eq_ignore_ascii_case("#f00") {
             "red".to_string()
         } else {
@@ -416,7 +438,7 @@ pub fn shorten_css_color(s: impl AsRef<str>) -> String {
 
     match g(t) {
         Some(c) => j(&c),
-        None => s.as_ref().to_string(),
+        None => s.to_string(),
     }
 }
 
