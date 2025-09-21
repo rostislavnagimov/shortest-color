@@ -403,8 +403,8 @@ fn j(c: &C) -> String {
     }
 }
 
-pub fn shorten_css_color(s: &str) -> String {
-    let t = s.trim();
+pub fn shorten_css_color(s: impl AsRef<str>) -> String {
+    let t = s.as_ref().trim();
 
     if t.len() < 5 {
         return if t.eq_ignore_ascii_case("#f00") {
@@ -416,7 +416,7 @@ pub fn shorten_css_color(s: &str) -> String {
 
     match g(t) {
         Some(c) => j(&c),
-        None => s.to_string(),
+        None => s.as_ref().to_string(),
     }
 }
 
