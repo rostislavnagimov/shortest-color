@@ -20,6 +20,18 @@ const fn hex_to_value(b: u8) -> u8 {
     }
 }
 
+fn ascii_case_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    for i in 0..a.len() {
+        if (a[i] | 0x20) != (b[i] | 0x20) {
+            return false;
+        }
+    }
+    true
+}
+
 #[inline(always)]
 const fn u(b: &[u8], i: usize) -> Option<u8> {
     let h = hex_to_value(b[i]);
@@ -306,7 +318,7 @@ fn g(s: &str) -> Option<C> {
         return d(s);
     }
 
-    if !b.contains(&b'(') {
+    if b[3] != (b'(') && b[4] != (b'(') {
         return e(s);
     }
 
@@ -314,20 +326,29 @@ fn g(s: &str) -> Option<C> {
         return None;
     }
 
-    let (func_type, has_alpha, start) = if len >= 5 && b[..5].eq_ignore_ascii_case(b"rgba(") {
-        (0, true, 5)
-    } else if len >= 4 && b[..4].eq_ignore_ascii_case(b"rgb(") {
-        (0, false, 4)
-    } else if len >= 5 && b[..5].eq_ignore_ascii_case(b"hsla(") {
-        (1, true, 5)
-    } else if len >= 4 && b[..4].eq_ignore_ascii_case(b"hsl(") {
-        (1, false, 4)
-    } else {
-        return None;
+    let (func_type, has_alpha, start) = match &b[..3] {
+        prefix if prefix.eq_ignore_ascii_case(b"rgb") => {
+            if b[3] == (b'(') {
+                (0, false, 4)
+            } else if b[3] == (b'a') && b[4] == (b'(') {
+                (0, true, 5)
+            } else {
+                return None;
+            }
+        }
+        prefix if prefix.eq_ignore_ascii_case(b"hsl") => {
+            if b[3] == (b'(') {
+                (1, false, 4)
+            } else if b[3] == (b'a') && b[4] == (b'(') {
+                (1, true, 5)
+            } else {
+                return None;
+            }
+        }
+        _ => return None,
     };
 
-    let args = &b[start..len - 1];
-    let (parts, count) = f(args)?;
+    let (parts, count) = f(&b[start..len - 1])?;
 
     if has_alpha && count == 2 {
         let name = std::str::from_utf8(parts[0]).ok()?;
@@ -422,23 +443,23 @@ fn j(c: &C) -> String {
 
 #[inline(always)]
 fn trim_whitespace(s: &str) -> &str {
-    let bytes = s.as_bytes();
-    let mut start = 0;
-    let mut end = bytes.len();
-
-    while start < end && matches!(bytes[start], b' ' | b'\t' | b'\n' | b'\r') {
-        start += 1;
-    }
-
-    while end > start && matches!(bytes[end - 1], b' ' | b'\t' | b'\n' | b'\r') {
-        end -= 1;
-    }
-
+    let start = s
+        .bytes()
+        .position(|b| !matches!(b, b' ' | b'\t' | b'\n' | b'\r'))
+        .unwrap_or(s.len());
+    let end = s
+        .bytes()
+        .rposition(|b| !matches!(b, b' ' | b'\t' | b'\n' | b'\r'))
+        .map(|i| i + 1)
+        .unwrap_or(0);
     &s[start..end]
 }
 
-pub fn shorten_css_color(s: impl AsRef<str>) -> String {
-    let s = s.as_ref();
+pub fn shorten_css_color(i: impl AsRef<str>) -> String {
+    let s = i.as_ref();
+    if s.is_empty() {
+        return String::new();
+    }
     let t = trim_whitespace(s);
     let len = t.len();
 
@@ -452,7 +473,7 @@ pub fn shorten_css_color(s: impl AsRef<str>) -> String {
 
     match g(t) {
         Some(c) => j(&c),
-        None => s.to_string(),
+        None => t.to_ascii_lowercase(),
     }
 }
 
