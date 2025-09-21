@@ -52,12 +52,16 @@ fn w(bytes: &[u8], m: f32, n: bool) -> Option<f32> {
     let mut has_dot = false;
     let mut divisor = 10.0f32;
     let neg = n && bytes[0] == b'-';
-    let p = if neg { 
-        if len == 1 { return None; }
-        1 
-    } else { 
-        if !n && bytes[0] == b'-' { return None; }
-        0 
+    let p = if neg {
+        if len == 1 {
+            return None;
+        }
+        1
+    } else {
+        if !n && bytes[0] == b'-' {
+            return None;
+        }
+        0
     };
 
     let mut i = p;
@@ -69,14 +73,20 @@ fn w(bytes: &[u8], m: f32, n: bool) -> Option<f32> {
                 if has_dot {
                     r += digit / divisor;
                     divisor *= 10.0;
-                    if divisor > 10000.0 { break; }
+                    if divisor > 10000.0 {
+                        break;
+                    }
                 } else {
                     r = r * 10.0 + digit;
-                    if r > m && !neg { return None; }
+                    if r > m && !neg {
+                        return None;
+                    }
                 }
             }
             b'.' => {
-                if has_dot { return None; }
+                if has_dot {
+                    return None;
+                }
                 has_dot = true;
             }
             _ => return None,
@@ -85,7 +95,11 @@ fn w(bytes: &[u8], m: f32, n: bool) -> Option<f32> {
     }
 
     let res = if neg { -r } else { r };
-    if res > m || (!n && res < 0.0) { None } else { Some(res) }
+    if res > m || (!n && res < 0.0) {
+        None
+    } else {
+        Some(res)
+    }
 }
 
 #[inline(always)]
@@ -116,7 +130,7 @@ fn x(b: &[u8]) -> Option<u8> {
 #[inline(always)]
 fn y(b: &[u8]) -> Option<f32> {
     let len = b.len();
-    if len < 2 || len > 6 || b[len - 1] != b'%' {
+    if !(2..=6).contains(&len) || b[len - 1] != b'%' {
         return None;
     }
 
@@ -411,15 +425,15 @@ fn trim_whitespace(s: &str) -> &str {
     let bytes = s.as_bytes();
     let mut start = 0;
     let mut end = bytes.len();
-    
+
     while start < end && matches!(bytes[start], b' ' | b'\t' | b'\n' | b'\r') {
         start += 1;
     }
-    
+
     while end > start && matches!(bytes[end - 1], b' ' | b'\t' | b'\n' | b'\r') {
         end -= 1;
     }
-    
+
     &s[start..end]
 }
 
