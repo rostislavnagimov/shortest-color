@@ -227,13 +227,12 @@ fn c(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
 }
 
 #[inline(always)]
-fn d(s: &str) -> Option<C> {
-    let b = s.as_bytes();
-    let len = b.len();
-    if len == 0 || b[0] != b'#' {
+fn d(s: &[u8]) -> Option<C> {
+    let len = s.len();
+    if len == 0 || s[0] != b'#' {
         return None;
     }
-    let h = &b[1..];
+    let h = &s[1..];
     match h.len() {
         3 => Some(C {
             r: v(h[0])?,
@@ -264,9 +263,9 @@ fn d(s: &str) -> Option<C> {
 }
 
 #[inline(always)]
-fn e(name: &str) -> Option<C> {
+fn e(name: &[u8]) -> Option<C> {
     K.iter()
-        .find(|&&(n, _)| ascii_case_eq(n.as_bytes(), name.as_bytes()))
+        .find(|&&(n, _)| ascii_case_eq(n, name))
         .and_then(|&(_, hex)| d(hex))
 }
 
@@ -310,36 +309,35 @@ fn f(args: &[u8]) -> Option<([&[u8]; 4], usize)> {
 }
 
 #[inline(always)]
-fn g(s: &str) -> Option<C> {
-    let b = s.as_bytes();
-    let len = b.len();
+fn g(s: &[u8]) -> Option<C> {
+    let len = s.len();
 
-    if b[0] == b'#' {
+    if s[0] == b'#' {
         return d(s);
     }
 
-    if b[3] != (b'(') && b[4] != (b'(') {
+    if s[3] != (b'(') && s[4] != (b'(') {
         return e(s);
     }
 
-    if b[len - 1] != b')' {
+    if s[len - 1] != b')' {
         return None;
     }
 
-    let (func_type, has_alpha, start) = match &b[..3] {
+    let (func_type, has_alpha, start) = match &s[..3] {
         prefix if ascii_case_eq(b"rgb", prefix) => {
-            if b[3] == (b'(') {
+            if s[3] == (b'(') {
                 (0, false, 4)
-            } else if b[3] == (b'a') && b[4] == (b'(') {
+            } else if s[3] == (b'a') && s[4] == (b'(') {
                 (0, true, 5)
             } else {
                 return None;
             }
         }
         prefix if ascii_case_eq(b"hsl", prefix) => {
-            if b[3] == (b'(') {
+            if s[3] == (b'(') {
                 (1, false, 4)
-            } else if b[3] == (b'a') && b[4] == (b'(') {
+            } else if s[3] == (b'a') && s[4] == (b'(') {
                 (1, true, 5)
             } else {
                 return None;
@@ -348,10 +346,10 @@ fn g(s: &str) -> Option<C> {
         _ => return None,
     };
 
-    let (parts, count) = f(&b[start..len - 1])?;
+    let (parts, count) = f(&s[start..len - 1])?;
 
     if has_alpha && count == 2 {
-        let name = std::str::from_utf8(parts[0]).ok()?;
+        let name = parts[0];
         if let Some(base) = e(name) {
             let alpha = z(parts[1])?;
             return Some(C { a: alpha, ..base });
@@ -392,7 +390,7 @@ const fn h(r: u8, g: u8, b: u8, a: u8) -> bool {
         && (a & 0x0F) * 0x11 == a
 }
 
-static N: LazyLock<Vec<(u32, &'static str)>> = LazyLock::new(|| {
+static N: LazyLock<Vec<(u32, &'static [u8])>> = LazyLock::new(|| {
     let mut m = HashMap::new();
     for &(n, h) in K {
         if let Some(c) = d(h) {
@@ -408,7 +406,7 @@ static N: LazyLock<Vec<(u32, &'static str)>> = LazyLock::new(|| {
 });
 
 #[inline(always)]
-fn i(rgb: u32) -> Option<&'static str> {
+fn i(rgb: u32) -> Option<&'static [u8]> {
     N.binary_search_by_key(&rgb, |&(r, _)| r)
         .ok()
         .map(|i| N[i].1)
@@ -447,7 +445,7 @@ fn j(c: &C) -> String {
         let is_short = h(c.r, c.g, c.b, 255);
         let max_len = if is_short { 4 } else { 7 };
         if q.len() < max_len {
-            return q.to_string();
+            return std::str::from_utf8(q).unwrap().to_string();
         }
     }
 
@@ -483,13 +481,13 @@ fn hex_digit(n: u8) -> u8 {
 
 
 #[inline(always)]
-fn trim_whitespace(s: &str) -> &str {
+fn trim_whitespace(s: &[u8]) -> &[u8] {
     let start = s
-        .bytes()
+        .iter()
         .position(|b| !matches!(b, b' ' | b'\t' | b'\n' | b'\r'))
         .unwrap_or(s.len());
     let end = s
-        .bytes()
+        .iter()
         .rposition(|b| !matches!(b, b' ' | b'\t' | b'\n' | b'\r'))
         .map(|i| i + 1)
         .unwrap_or(0);
@@ -497,7 +495,7 @@ fn trim_whitespace(s: &str) -> &str {
 }
 
 pub fn shorten_css_color(i: impl AsRef<str>) -> String {
-    let s = i.as_ref();
+    let s = i.as_ref().as_bytes();
     if s.is_empty() {
         return String::new();
     }
@@ -505,167 +503,168 @@ pub fn shorten_css_color(i: impl AsRef<str>) -> String {
     let len = t.len();
 
     if len < 5 {
-        return if ascii_case_eq(t.as_bytes(), b"#f00") {
+        return if ascii_case_eq(t, b"#f00") {
             "red".to_string()
         } else {
-            t.to_ascii_lowercase()
+            std::str::from_utf8(t).unwrap().to_ascii_lowercase()
         };
     }
 
     match g(t) {
         Some(c) => j(&c),
-        None => t.to_ascii_lowercase(),
+        None => std::str::from_utf8(t).unwrap().to_ascii_lowercase(),
     }
 }
 
-const K: &[(&str, &str)] = &[
-    ("aliceblue", "#f0f8ff"),
-    ("antiquewhite", "#faebd7"),
-    ("aqua", "#0ff"),
-    ("aquamarine", "#7fffd4"),
-    ("azure", "#f0ffff"),
-    ("beige", "#f5f5dc"),
-    ("bisque", "#ffe4c4"),
-    ("black", "#000"),
-    ("blanchedalmond", "#ffebcd"),
-    ("blue", "#00f"),
-    ("blueviolet", "#8a2be2"),
-    ("brown", "#a52a2a"),
-    ("burlywood", "#deb887"),
-    ("cadetblue", "#5f9ea0"),
-    ("chartreuse", "#7fff00"),
-    ("chocolate", "#d2691e"),
-    ("coral", "#ff7f50"),
-    ("cornflowerblue", "#6495ed"),
-    ("cornsilk", "#fff8dc"),
-    ("crimson", "#dc143c"),
-    ("cyan", "#0ff"),
-    ("darkblue", "#00008b"),
-    ("darkcyan", "#008b8b"),
-    ("darkgoldenrod", "#b8860b"),
-    ("darkgray", "#a9a9a9"),
-    ("darkgreen", "#006400"),
-    ("darkgrey", "#a9a9a9"),
-    ("darkkhaki", "#bdb76b"),
-    ("darkmagenta", "#8b008b"),
-    ("darkolivegreen", "#556b2f"),
-    ("darkorange", "#ff8c00"),
-    ("darkorchid", "#9932cc"),
-    ("darkred", "#8b0000"),
-    ("darksalmon", "#e9967a"),
-    ("darkseagreen", "#8fbc8f"),
-    ("darkslateblue", "#483d8b"),
-    ("darkslategray", "#2f4f4f"),
-    ("darkslategrey", "#2f4f4f"),
-    ("darkturquoise", "#00ced1"),
-    ("darkviolet", "#9400d3"),
-    ("deeppink", "#ff1493"),
-    ("deepskyblue", "#00bfff"),
-    ("dimgray", "#696969"),
-    ("dimgrey", "#696969"),
-    ("dodgerblue", "#1e90ff"),
-    ("firebrick", "#b22222"),
-    ("floralwhite", "#fffaf0"),
-    ("forestgreen", "#228b22"),
-    ("fuchsia", "#f0f"),
-    ("gainsboro", "#dcdcdc"),
-    ("ghostwhite", "#f8f8ff"),
-    ("gold", "#ffd700"),
-    ("goldenrod", "#daa520"),
-    ("gray", "#808080"),
-    ("green", "#008000"),
-    ("greenyellow", "#adff2f"),
-    ("grey", "#808080"),
-    ("honeydew", "#f0fff0"),
-    ("hotpink", "#ff69b4"),
-    ("indianred", "#cd5c5c"),
-    ("indigo", "#4b0082"),
-    ("ivory", "#fffff0"),
-    ("khaki", "#f0e68c"),
-    ("lavender", "#e6e6fa"),
-    ("lavenderblush", "#fff0f5"),
-    ("lawngreen", "#7cfc00"),
-    ("lemonchiffon", "#fffacd"),
-    ("lightblue", "#add8e6"),
-    ("lightcoral", "#f08080"),
-    ("lightcyan", "#e0ffff"),
-    ("lightgoldenrodyellow", "#fafad2"),
-    ("lightgray", "#d3d3d3"),
-    ("lightgreen", "#90ee90"),
-    ("lightgrey", "#d3d3d3"),
-    ("lightpink", "#ffb6c1"),
-    ("lightsalmon", "#ffa07a"),
-    ("lightseagreen", "#20b2aa"),
-    ("lightskyblue", "#87cefa"),
-    ("lightslategray", "#778899"),
-    ("lightslategrey", "#778899"),
-    ("lightsteelblue", "#b0c4de"),
-    ("lightyellow", "#ffffe0"),
-    ("lime", "#0f0"),
-    ("limegreen", "#32cd32"),
-    ("linen", "#faf0e6"),
-    ("magenta", "#f0f"),
-    ("maroon", "#800000"),
-    ("mediumaquamarine", "#66cdaa"),
-    ("mediumblue", "#0000cd"),
-    ("mediumorchid", "#ba55d3"),
-    ("mediumpurple", "#9370db"),
-    ("mediumseagreen", "#3cb371"),
-    ("mediumslateblue", "#7b68ee"),
-    ("mediumspringgreen", "#00fa9a"),
-    ("mediumturquoise", "#48d1cc"),
-    ("mediumvioletred", "#c71585"),
-    ("midnightblue", "#191970"),
-    ("mintcream", "#f5fffa"),
-    ("mistyrose", "#ffe4e1"),
-    ("moccasin", "#ffe4b5"),
-    ("navajowhite", "#ffdead"),
-    ("navy", "#000080"),
-    ("oldlace", "#fdf5e6"),
-    ("olive", "#808000"),
-    ("olivedrab", "#6b8e23"),
-    ("orange", "#ffa500"),
-    ("orangered", "#ff4500"),
-    ("orchid", "#da70d6"),
-    ("palegoldenrod", "#eee8aa"),
-    ("palegreen", "#98fb98"),
-    ("paleturquoise", "#afeeee"),
-    ("palevioletred", "#db7093"),
-    ("papayawhip", "#ffefd5"),
-    ("peachpuff", "#ffdab9"),
-    ("peru", "#cd853f"),
-    ("pink", "#ffc0cb"),
-    ("plum", "#dda0dd"),
-    ("powderblue", "#b0e0e6"),
-    ("purple", "#800080"),
-    ("rebeccapurple", "#639"),
-    ("red", "#f00"),
-    ("rosybrown", "#bc8f8f"),
-    ("royalblue", "#4169e1"),
-    ("saddlebrown", "#8b4513"),
-    ("salmon", "#fa8072"),
-    ("sandybrown", "#f4a460"),
-    ("seagreen", "#2e8b57"),
-    ("seashell", "#fff5ee"),
-    ("sienna", "#a0522d"),
-    ("silver", "#c0c0c0"),
-    ("skyblue", "#87ceeb"),
-    ("slateblue", "#6a5acd"),
-    ("slategray", "#708090"),
-    ("slategrey", "#708090"),
-    ("snow", "#fffafa"),
-    ("springgreen", "#00ff7f"),
-    ("steelblue", "#4682b4"),
-    ("tan", "#d2b48c"),
-    ("teal", "#008080"),
-    ("thistle", "#d8bfd8"),
-    ("tomato", "#ff6347"),
-    ("transparent", "#0000"),
-    ("turquoise", "#40e0d0"),
-    ("violet", "#ee82ee"),
-    ("wheat", "#f5deb3"),
-    ("white", "#fff"),
-    ("whitesmoke", "#f5f5f5"),
-    ("yellow", "#ff0"),
-    ("yellowgreen", "#9acd32"),
+const K: &[(&[u8], &[u8])] = &[
+    (b"aliceblue", b"#f0f8ff"),
+    (b"antiquewhite", b"#faebd7"),
+    (b"aqua", b"#0ff"),
+    (b"aquamarine", b"#7fffd4"),
+    (b"azure", b"#f0ffff"),
+    (b"beige", b"#f5f5dc"),
+    (b"bisque", b"#ffe4c4"),
+    (b"black", b"#000"),
+    (b"blanchedalmond", b"#ffebcd"),
+    (b"blue", b"#00f"),
+    (b"blueviolet", b"#8a2be2"),
+    (b"brown", b"#a52a2a"),
+    (b"burlywood", b"#deb887"),
+    (b"cadetblue", b"#5f9ea0"),
+    (b"chartreuse", b"#7fff00"),
+    (b"chocolate", b"#d2691e"),
+    (b"coral", b"#ff7f50"),
+    (b"cornflowerblue", b"#6495ed"),
+    (b"cornsilk", b"#fff8dc"),
+    (b"crimson", b"#dc143c"),
+    (b"cyan", b"#0ff"),
+    (b"darkblue", b"#00008b"),
+    (b"darkcyan", b"#008b8b"),
+    (b"darkgoldenrod", b"#b8860b"),
+    (b"darkgray", b"#a9a9a9"),
+    (b"darkgreen", b"#006400"),
+    (b"darkgrey", b"#a9a9a9"),
+    (b"darkkhaki", b"#bdb76b"),
+    (b"darkmagenta", b"#8b008b"),
+    (b"darkolivegreen", b"#556b2f"),
+    (b"darkorange", b"#ff8c00"),
+    (b"darkorchid", b"#9932cc"),
+    (b"darkred", b"#8b0000"),
+    (b"darksalmon", b"#e9967a"),
+    (b"darkseagreen", b"#8fbc8f"),
+    (b"darkslateblue", b"#483d8b"),
+    (b"darkslategray", b"#2f4f4f"),
+    (b"darkslategrey", b"#2f4f4f"),
+    (b"darkturquoise", b"#00ced1"),
+    (b"darkviolet", b"#9400d3"),
+    (b"deeppink", b"#ff1493"),
+    (b"deepskyblue", b"#00bfff"),
+    (b"dimgray", b"#696969"),
+    (b"dimgrey", b"#696969"),
+    (b"dodgerblue", b"#1e90ff"),
+    (b"firebrick", b"#b22222"),
+    (b"floralwhite", b"#fffaf0"),
+    (b"forestgreen", b"#228b22"),
+    (b"fuchsia", b"#f0f"),
+    (b"gainsboro", b"#dcdcdc"),
+    (b"ghostwhite", b"#f8f8ff"),
+    (b"gold", b"#ffd700"),
+    (b"goldenrod", b"#daa520"),
+    (b"gray", b"#808080"),
+    (b"green", b"#008000"),
+    (b"greenyellow", b"#adff2f"),
+    (b"grey", b"#808080"),
+    (b"honeydew", b"#f0fff0"),
+    (b"hotpink", b"#ff69b4"),
+    (b"indianred", b"#cd5c5c"),
+    (b"indigo", b"#4b0082"),
+    (b"ivory", b"#fffff0"),
+    (b"khaki", b"#f0e68c"),
+    (b"lavender", b"#e6e6fa"),
+    (b"lavenderblush", b"#fff0f5"),
+    (b"lawngreen", b"#7cfc00"),
+    (b"lemonchiffon", b"#fffacd"),
+    (b"lightblue", b"#add8e6"),
+    (b"lightcoral", b"#f08080"),
+    (b"lightcyan", b"#e0ffff"),
+    (b"lightgoldenrodyellow", b"#fafad2"),
+    (b"lightgray", b"#d3d3d3"),
+    (b"lightgreen", b"#90ee90"),
+    (b"lightgrey", b"#d3d3d3"),
+    (b"lightpink", b"#ffb6c1"),
+    (b"lightsalmon", b"#ffa07a"),
+    (b"lightseagreen", b"#20b2aa"),
+    (b"lightskyblue", b"#87cefa"),
+    (b"lightslategray", b"#778899"),
+    (b"lightslategrey", b"#778899"),
+    (b"lightsteelblue", b"#b0c4de"),
+    (b"lightyellow", b"#ffffe0"),
+    (b"lime", b"#0f0"),
+    (b"limegreen", b"#32cd32"),
+    (b"linen", b"#faf0e6"),
+    (b"magenta", b"#f0f"),
+    (b"maroon", b"#800000"),
+    (b"mediumaquamarine", b"#66cdaa"),
+    (b"mediumblue", b"#0000cd"),
+    (b"mediumorchid", b"#ba55d3"),
+    (b"mediumpurple", b"#9370db"),
+    (b"mediumseagreen", b"#3cb371"),
+    (b"mediumslateblue", b"#7b68ee"),
+    (b"mediumspringgreen", b"#00fa9a"),
+    (b"mediumturquoise", b"#48d1cc"),
+    (b"mediumvioletred", b"#c71585"),
+    (b"midnightblue", b"#191970"),
+    (b"mintcream", b"#f5fffa"),
+    (b"mistyrose", b"#ffe4e1"),
+    (b"moccasin", b"#ffe4b5"),
+    (b"navajowhite", b"#ffdead"),
+    (b"navy", b"#000080"),
+    (b"oldlace", b"#fdf5e6"),
+    (b"olive", b"#808000"),
+    (b"olivedrab", b"#6b8e23"),
+    (b"orange", b"#ffa500"),
+    (b"orangered", b"#ff4500"),
+    (b"orchid", b"#da70d6"),
+    (b"palegoldenrod", b"#eee8aa"),
+    (b"palegreen", b"#98fb98"),
+    (b"paleturquoise", b"#afeeee"),
+    (b"palevioletred", b"#db7093"),
+    (b"papayawhip", b"#ffefd5"),
+    (b"peachpuff", b"#ffdab9"),
+    (b"peru", b"#cd853f"),
+    (b"pink", b"#ffc0cb"),
+    (b"plum", b"#dda0dd"),
+    (b"powderblue", b"#b0e0e6"),
+    (b"purple", b"#800080"),
+    (b"rebeccapurple", b"#639"),
+    (b"red", b"#f00"),
+    (b"rosybrown", b"#bc8f8f"),
+    (b"royalblue", b"#4169e1"),
+    (b"saddlebrown", b"#8b4513"),
+    (b"salmon", b"#fa8072"),
+    (b"sandybrown", b"#f4a460"),
+    (b"seagreen", b"#2e8b57"),
+    (b"seashell", b"#fff5ee"),
+    (b"sienna", b"#a0522d"),
+    (b"silver", b"#c0c0c0"),
+    (b"skyblue", b"#87ceeb"),
+    (b"slateblue", b"#6a5acd"),
+    (b"slategray", b"#708090"),
+    (b"slategrey", b"#708090"),
+    (b"snow", b"#fffafa"),
+    (b"springgreen", b"#00ff7f"),
+    (b"steelblue", b"#4682b4"),
+    (b"tan", b"#d2b48c"),
+    (b"teal", b"#008080"),
+    (b"thistle", b"#d8bfd8"),
+    (b"tomato", b"#ff6347"),
+    (b"transparent", b"#0000"),
+    (b"turquoise", b"#40e0d0"),
+    (b"violet", b"#ee82ee"),
+    (b"wheat", b"#f5deb3"),
+    (b"white", b"#fff"),
+    (b"whitesmoke", b"#f5f5f5"),
+    (b"yellow", b"#ff0"),
+    (b"yellowgreen", b"#9acd32"),
 ];
+
