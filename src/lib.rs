@@ -479,7 +479,6 @@ fn hex_digit(n: u8) -> u8 {
     }
 }
 
-
 #[inline(always)]
 fn trim_whitespace(s: &[u8]) -> &[u8] {
     let start = s
@@ -667,4 +666,3 @@ const K: &[(&[u8], &[u8])] = &[
     (b"yellow", b"#ff0"),
     (b"yellowgreen", b"#9acd32"),
 ];
-
