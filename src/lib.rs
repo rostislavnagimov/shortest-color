@@ -328,7 +328,7 @@ fn g(s: &[u8]) -> Option<C> {
         prefix if ascii_case_eq(b"rgb", prefix) => {
             if s[3] == (b'(') {
                 (0, false, 4)
-            } else if s[3] == (b'a') && s[4] == (b'(') {
+            } else if s[3] == (b'a') {
                 (0, true, 5)
             } else {
                 return None;
@@ -337,7 +337,7 @@ fn g(s: &[u8]) -> Option<C> {
         prefix if ascii_case_eq(b"hsl", prefix) => {
             if s[3] == (b'(') {
                 (1, false, 4)
-            } else if s[3] == (b'a') && s[4] == (b'(') {
+            } else if s[3] == (b'a') {
                 (1, true, 5)
             } else {
                 return None;
