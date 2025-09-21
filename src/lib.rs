@@ -481,15 +481,14 @@ fn hex_digit(n: u8) -> u8 {
 
 #[inline(always)]
 fn trim_whitespace(s: &[u8]) -> &[u8] {
-    let start = s
-        .iter()
-        .position(|b| !matches!(b, b' ' | b'\t' | b'\n' | b'\r'))
-        .unwrap_or(s.len());
-    let end = s
-        .iter()
-        .rposition(|b| !matches!(b, b' ' | b'\t' | b'\n' | b'\r'))
-        .map(|i| i + 1)
-        .unwrap_or(0);
+    let mut start = 0;
+    while start < s.len() && matches!(s[start], b' ' | b'\t' | b'\n' | b'\r') {
+        start += 1;
+    }
+    let mut end = s.len();
+    while end > start && matches!(s[end - 1], b' ' | b'\t' | b'\n' | b'\r') {
+        end -= 1;
+    }
     &s[start..end]
 }
 
