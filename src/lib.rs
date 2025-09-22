@@ -10,10 +10,10 @@ struct C {
     a: u8,
 }
 
-const RAD_TO_DEG: f32 = 57.29578;
+const R: f32 = 57.29578;
 
 #[inline(always)]
-const fn hex_to_value(b: u8) -> u8 {
+const fn h(b: u8) -> u8 {
     match b {
         b'0'..=b'9' => b - b'0',
         b'A'..=b'F' => b - b'A' + 10,
@@ -23,24 +23,27 @@ const fn hex_to_value(b: u8) -> u8 {
 }
 
 #[inline(always)]
-fn ascii_case_eq(a: &[u8], b: &[u8]) -> bool {
-    a.len() == b.len() && a.iter().zip(b.iter()).all(|(&x, &y)| (x | 0x20) == (y | 0x20))
+fn e(a: &[u8], b: &[u8]) -> bool {
+    a.len() == b.len()
+        && a.iter()
+            .zip(b.iter())
+            .all(|(&x, &y)| (x | 0x20) == (y | 0x20))
 }
 
 #[inline(always)]
-const fn parse_hex_pair(b: &[u8], i: usize) -> Option<u8> {
-    let h = hex_to_value(b[i]);
-    let l = hex_to_value(b[i + 1]);
-    if h == 255 || l == 255 {
+const fn p(b: &[u8], i: usize) -> Option<u8> {
+    let h1 = h(b[i]);
+    let l = h(b[i + 1]);
+    if h1 == 255 || l == 255 {
         None
     } else {
-        Some((h << 4) | l)
+        Some((h1 << 4) | l)
     }
 }
 
 #[inline(always)]
-const fn parse_hex_single(b: u8) -> Option<u8> {
-    let v = hex_to_value(b);
+const fn sg(b: u8) -> Option<u8> {
+    let v = h(b);
     if v == 255 {
         None
     } else {
@@ -49,155 +52,165 @@ const fn parse_hex_single(b: u8) -> Option<u8> {
 }
 
 #[inline(always)]
-fn parse_number(bytes: &[u8], max_val: f32, allow_negative: bool) -> Option<f32> {
-    let len = bytes.len();
-    if len == 0 || len > 8 {
+fn n(b: &[u8], m: f32, a: bool) -> Option<f32> {
+    let l = b.len();
+    if l == 0 || l > 8 {
         return None;
     }
 
-    let mut result = 0.0f32;
-    let mut has_dot = false;
-    let mut divisor = 10.0f32;
-    let negative = allow_negative && bytes[0] == b'-';
-    let start = if negative {
-        if len == 1 { return None; }
+    let mut r = 0.0f32;
+    let mut d = false;
+    let mut dv = 10.0f32;
+    let ng = a && b[0] == b'-';
+    let st = if ng {
+        if l == 1 {
+            return None;
+        }
         1
     } else {
-        if !allow_negative && bytes[0] == b'-' { return None; }
+        if !a && b[0] == b'-' {
+            return None;
+        }
         0
     };
 
-    for &c in &bytes[start..] {
+    for &c in &b[st..] {
         match c {
             b'0'..=b'9' => {
-                let digit = (c - b'0') as f32;
-                if has_dot {
-                    result += digit / divisor;
-                    divisor *= 10.0;
-                    if divisor > 10000.0 { break; }
+                let dt = (c - b'0') as f32;
+                if d {
+                    r += dt / dv;
+                    dv *= 10.0;
+                    if dv > 10000.0 {
+                        break;
+                    }
                 } else {
-                    result = result * 10.0 + digit;
-                    if result > max_val && !negative { return None; }
+                    r = r * 10.0 + dt;
+                    if r > m && !ng {
+                        return None;
+                    }
                 }
             }
             b'.' => {
-                if has_dot { return None; }
-                has_dot = true;
+                if d {
+                    return None;
+                }
+                d = true;
             }
             _ => return None,
         }
     }
 
-    let final_result = if negative { -result } else { result };
-    if final_result > max_val || (!allow_negative && final_result < 0.0) {
+    let f = if ng { -r } else { r };
+    if f > m || (!a && f < 0.0) {
         None
     } else {
-        Some(final_result)
+        Some(f)
     }
 }
 
 #[inline(always)]
-fn parse_rgb_component(b: &[u8]) -> Option<u8> {
-    let len = b.len();
-    if len == 0 || len > 6 {
+fn rt(b: &[u8]) -> Option<u8> {
+    let l = b.len();
+    if l == 0 || l > 6 {
         return None;
     }
 
     if !b.contains(&b'.') {
-        let mut result = 0u32;
+        let mut rs = 0u32;
         for &c in b {
             if !c.is_ascii_digit() {
                 return None;
             }
-            result = result * 10 + (c - b'0') as u32;
-            if result > 255 {
+            rs = rs * 10 + (c - b'0') as u32;
+            if rs > 255 {
                 return None;
             }
         }
-        return Some(result as u8);
+        return Some(rs as u8);
     }
 
-    let r = parse_number(b, 255.9, false)?;
-    Some((r + 0.5) as u8)
+    let rt = n(b, 255.9, false)?;
+    Some((rt + 0.5) as u8)
 }
 
 #[inline(always)]
-fn parse_percentage(b: &[u8]) -> Option<f32> {
-    let len = b.len();
-    if !(2..=6).contains(&len) || b[len - 1] != b'%' {
+fn pr(b: &[u8]) -> Option<f32> {
+    let l = b.len();
+    if !(2..=6).contains(&l) || b[l - 1] != b'%' {
         return None;
     }
 
-    let number_part = &b[..len - 1];
-    let result = parse_number(number_part, 100.0, true)?;
-    if !(0.0..=100.0).contains(&result) {
+    let np = &b[..l - 1];
+    let rs = n(np, 100.0, true)?;
+    if !(0.0..=100.0).contains(&rs) {
         return None;
     }
-    Some(result)
+    Some(rs)
 }
 
 #[inline(always)]
-fn parse_alpha_component(b: &[u8]) -> Option<u8> {
+fn al(b: &[u8]) -> Option<u8> {
     if b.is_empty() {
         return None;
     }
 
     if b[b.len() - 1] == b'%' {
-        let percentage = parse_percentage(b)?;
-        return Some((percentage * 2.55 + 0.5) as u8);
+        let pc = pr(b)?;
+        return Some((pc * 2.55 + 0.5) as u8);
     }
 
-    let result = parse_number(b, 1.0, false)?;
-    Some((result * 255.0 + 0.5) as u8)
+    let rs = n(b, 1.0, false)?;
+    Some((rs * 255.0 + 0.5) as u8)
 }
 
 #[inline(always)]
-fn ends_with_ignore_case(slice: &[u8], suffix: &[u8]) -> bool {
-    let slice_len = slice.len();
-    let suffix_len = suffix.len();
-    slice_len >= suffix_len && ascii_case_eq(&slice[slice_len - suffix_len..], suffix)
+fn ew(sl: &[u8], sf: &[u8]) -> bool {
+    let sl_l = sl.len();
+    let sf_l = sf.len();
+    sl_l >= sf_l && e(&sl[sl_l - sf_l..], sf)
 }
 
 #[inline(always)]
-fn parse_angle(s: &str) -> Option<f32> {
-    let bytes = s.as_bytes();
-    let len = bytes.len();
-    if len == 0 {
+fn an(s: &str) -> Option<f32> {
+    let b = s.as_bytes();
+    let l = b.len();
+    if l == 0 {
         return None;
     }
 
-    let (number_str, multiplier) = if ends_with_ignore_case(bytes, b"grad") {
-        (&s[..len - 4], 0.9)
-    } else if ends_with_ignore_case(bytes, b"turn") {
-        (&s[..len - 4], 360.0)
-    } else if ends_with_ignore_case(bytes, b"deg") {
-        (&s[..len - 3], 1.0)
-    } else if ends_with_ignore_case(bytes, b"rad") {
-        (&s[..len - 3], RAD_TO_DEG)
+    let (ns, mu) = if ew(b, b"grad") {
+        (&s[..l - 4], 0.9)
+    } else if ew(b, b"turn") {
+        (&s[..l - 4], 360.0)
+    } else if ew(b, b"deg") {
+        (&s[..l - 3], 1.0)
+    } else if ew(b, b"rad") {
+        (&s[..l - 3], R)
     } else {
         (s, 1.0)
     };
 
-    let hue = parse_number(number_str.as_bytes(), f32::MAX, true)?;
-    Some(((hue * multiplier % 360.0) + 360.0) % 360.0)
+    let hu = n(ns.as_bytes(), f32::MAX, true)?;
+    Some(((hu * mu % 360.0) + 360.0) % 360.0)
 }
 
 #[inline(always)]
-fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
-    let s_norm = s * 0.01;
-    let l_norm = l * 0.01;
-    let chroma = (1.0 - (2.0 * l_norm - 1.0).abs()) * s_norm;
-    let hue_sector = h / 60.0;
-    let x = chroma * (1.0 - ((hue_sector % 2.0) - 1.0).abs());
-    let m = l_norm - chroma * 0.5;
+fn hs(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
+    let sn = s * 0.01;
+    let ln = l * 0.01;
+    let ch = (1.0 - (2.0 * ln - 1.0).abs()) * sn;
+    let hc = h / 60.0;
+    let x = ch * (1.0 - ((hc % 2.0) - 1.0).abs());
+    let m = ln - ch * 0.5;
 
-    let (r, g, b) = match hue_sector as u8 {
-        0 => (chroma, x, 0.0),
-        1 => (x, chroma, 0.0),
-        2 => (0.0, chroma, x),
-        3 => (0.0, x, chroma),
-        4 => (x, 0.0, chroma),
-        _ => (chroma, 0.0, x),
+    let (r, g, b) = match hc as u8 {
+        0 => (ch, x, 0.0),
+        1 => (x, ch, 0.0),
+        2 => (0.0, ch, x),
+        3 => (0.0, x, ch),
+        4 => (x, 0.0, ch),
+        _ => (ch, 0.0, x),
     };
 
     (
@@ -208,104 +221,108 @@ fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
 }
 
 #[inline(always)]
-fn parse_hex_color(s: &[u8]) -> Option<C> {
-    let len = s.len();
-    if len == 0 || s[0] != b'#' {
+fn hc(s: &[u8]) -> Option<C> {
+    let l = s.len();
+    if l == 0 || s[0] != b'#' {
         return None;
     }
-    let hex_part = &s[1..];
-    match hex_part.len() {
+    let hp = &s[1..];
+    match hp.len() {
         3 => Some(C {
-            r: parse_hex_single(hex_part[0])?,
-            g: parse_hex_single(hex_part[1])?,
-            b: parse_hex_single(hex_part[2])?,
+            r: sg(hp[0])?,
+            g: sg(hp[1])?,
+            b: sg(hp[2])?,
             a: 255,
         }),
         4 => Some(C {
-            r: parse_hex_single(hex_part[0])?,
-            g: parse_hex_single(hex_part[1])?,
-            b: parse_hex_single(hex_part[2])?,
-            a: parse_hex_single(hex_part[3])?,
+            r: sg(hp[0])?,
+            g: sg(hp[1])?,
+            b: sg(hp[2])?,
+            a: sg(hp[3])?,
         }),
         6 => Some(C {
-            r: parse_hex_pair(hex_part, 0)?,
-            g: parse_hex_pair(hex_part, 2)?,
-            b: parse_hex_pair(hex_part, 4)?,
+            r: p(hp, 0)?,
+            g: p(hp, 2)?,
+            b: p(hp, 4)?,
             a: 255,
         }),
         8 => Some(C {
-            r: parse_hex_pair(hex_part, 0)?,
-            g: parse_hex_pair(hex_part, 2)?,
-            b: parse_hex_pair(hex_part, 4)?,
-            a: parse_hex_pair(hex_part, 6)?,
+            r: p(hp, 0)?,
+            g: p(hp, 2)?,
+            b: p(hp, 4)?,
+            a: p(hp, 6)?,
         }),
         _ => None,
     }
 }
 
 #[inline(always)]
-fn lookup_color_name(name: &[u8]) -> Option<C> {
+fn lk(nm: &[u8]) -> Option<C> {
     K.iter()
-        .find(|&&(n, _)| ascii_case_eq(n, name))
-        .and_then(|&(_, hex)| parse_hex_color(hex))
+        .find(|&&(n, _)| e(n, nm))
+        .and_then(|&(_, hx)| hc(hx))
 }
 
 #[inline(always)]
-fn parse_function_args(args: &[u8]) -> Option<([&[u8]; 4], usize)> {
-    let mut parts = [&[][..]; 4];
-    let mut count = 0;
-    let mut start = 0;
-    let mut in_arg = false;
+fn ar(ag: &[u8]) -> Option<([&[u8]; 4], usize)> {
+    let mut pt = [&[][..]; 4];
+    let mut c = 0;
+    let mut st = 0;
+    let mut ia = false;
 
-    for i in 0..args.len() {
-        let b = args[i];
-        let is_separator = matches!(b, b' ' | b'\t' | b',');
+    for i in 0..ag.len() {
+        let b = ag[i];
+        let is = matches!(b, b' ' | b'\t' | b',');
 
-        if !is_separator && !in_arg {
-            start = i;
-            in_arg = true;
-        } else if is_separator && in_arg {
-            if count >= 4 { return None; }
-            parts[count] = &args[start..i];
-            count += 1;
-            in_arg = false;
+        if !is && !ia {
+            st = i;
+            ia = true;
+        } else if is && ia {
+            if c >= 4 {
+                return None;
+            }
+            pt[c] = &ag[st..i];
+            c += 1;
+            ia = false;
         }
     }
 
-    if in_arg {
-        if count >= 4 { return None; }
-        parts[count] = &args[start..];
-        count += 1;
+    if ia {
+        if c >= 4 {
+            return None;
+        }
+        pt[c] = &ag[st..];
+        c += 1;
     }
 
-    if (2..=4).contains(&count) {
-        Some((parts, count))
+    if (2..=4).contains(&c) {
+        Some((pt, c))
     } else {
         None
     }
 }
 
 #[inline(always)]
-fn parse_color(s: &[u8]) -> Option<C> {
-    let len = s.len();
-    if len == 0 {
+fn pc(s: &[u8]) -> Option<C> {
+    let l = s.len();
+    if l == 0 {
         return None;
     }
 
     if s[0] == b'#' {
-        return parse_hex_color(s);
+        return hc(s);
     }
 
-    if len < 4 || (s[3] != b'(' && s[4] != b'(') {
-        return lookup_color_name(s);
+    if l < 4 || (s[3] != b'(' && s[4] != b'(') {
+        return lk(s);
     }
 
-    if s[len - 1] != b')' {
+    if s[l - 1] != b')' {
         return None;
     }
 
-    let (func_type, has_alpha, start) = match &s[..3] {
-        prefix if ascii_case_eq(b"rgb", prefix) => {
+    let (ft, ha, st) = match &s[..3] {
+        px if e(b"rgb", px) => {
             if s[3] == b'(' {
                 (0, false, 4)
             } else if s[3] == b'a' {
@@ -314,7 +331,7 @@ fn parse_color(s: &[u8]) -> Option<C> {
                 return None;
             }
         }
-        prefix if ascii_case_eq(b"hsl", prefix) => {
+        px if e(b"hsl", px) => {
             if s[3] == b'(' {
                 (1, false, 4)
             } else if s[3] == b'a' {
@@ -326,79 +343,74 @@ fn parse_color(s: &[u8]) -> Option<C> {
         _ => return None,
     };
 
-    let (parts, count) = parse_function_args(&s[start..len - 1])?;
+    let (pt, c) = ar(&s[st..l - 1])?;
 
-    if has_alpha && count == 2 {
-        let name = parts[0];
-        if let Some(base_color) = lookup_color_name(name) {
-            let alpha = parse_alpha_component(parts[1])?;
-            return Some(C { a: alpha, ..base_color });
+    if ha && c == 2 {
+        let nm = pt[0];
+        if let Some(bc) = lk(nm) {
+            let a = al(pt[1])?;
+            return Some(C { a, ..bc });
         }
         return None;
     }
 
-    let expected_parts = if has_alpha { 4 } else { 3 };
-    if count != expected_parts {
+    let ep = if ha { 4 } else { 3 };
+    if c != ep {
         return None;
     }
 
-    let alpha = if has_alpha {
-        parse_alpha_component(parts[3])?
-    } else {
-        255
-    };
+    let a = if ha { al(pt[3])? } else { 255 };
 
-    match func_type {
+    match ft {
         0 => {
-            let r = parse_rgb_component(parts[0])?;
-            let g = parse_rgb_component(parts[1])?;
-            let b = parse_rgb_component(parts[2])?;
-            Some(C { r, g, b, a: alpha })
+            let rg = rt(pt[0])?;
+            let g = rt(pt[1])?;
+            let b = rt(pt[2])?;
+            Some(C { r: rg, g, b, a })
         }
         _ => {
-            let hue_str = std::str::from_utf8(parts[0]).ok()?;
-            let hue = parse_angle(hue_str)?;
-            let saturation = parse_percentage(parts[1])?;
-            let lightness = parse_percentage(parts[2])?;
-            let (r, g, b) = hsl_to_rgb(hue, saturation, lightness);
-            Some(C { r, g, b, a: alpha })
+            let hs_str = std::str::from_utf8(pt[0]).ok()?;
+            let hu = an(hs_str)?;
+            let sa = pr(pt[1])?;
+            let li = pr(pt[2])?;
+            let (r, g, b) = hs(hu, sa, li);
+            Some(C { r, g, b, a })
         }
     }
 }
 
 #[inline(always)]
-const fn is_short_hex(r: u8, g: u8, b: u8, a: u8) -> bool {
+const fn sh(r: u8, g: u8, b: u8, a: u8) -> bool {
     (r & 0x0F) * 0x11 == r
         && (g & 0x0F) * 0x11 == g
         && (b & 0x0F) * 0x11 == b
         && (a & 0x0F) * 0x11 == a
 }
 
-static COLOR_LOOKUP: LazyLock<Vec<(u32, &'static [u8])>> = LazyLock::new(|| {
-    let mut map = HashMap::new();
-    for &(name, hex) in K {
-        if let Some(color) = parse_hex_color(hex) {
-            if color.a == 255 {
-                let rgb = ((color.r as u32) << 16) | ((color.g as u32) << 8) | (color.b as u32);
-                map.entry(rgb).or_insert(name);
+static L: LazyLock<Vec<(u32, &'static [u8])>> = LazyLock::new(|| {
+    let mut m = HashMap::new();
+    for &(nm, hx) in K {
+        if let Some(cl) = hc(hx) {
+            if cl.a == 255 {
+                let rg = ((cl.r as u32) << 16) | ((cl.g as u32) << 8) | (cl.b as u32);
+                m.entry(rg).or_insert(nm);
             }
         }
     }
-    let mut vec: Vec<_> = map.into_iter().collect();
-    vec.sort_unstable_by_key(|&(rgb, _)| rgb);
-    vec
+    let mut v: Vec<_> = m.into_iter().collect();
+    v.sort_unstable_by_key(|&(rg, _)| rg);
+    v
 });
 
 #[inline(always)]
-fn find_color_name(rgb: u32) -> Option<&'static [u8]> {
-    COLOR_LOOKUP
-        .binary_search_by_key(&rgb, |&(r, _)| r)
+fn fn1(rg: u32) -> Option<&'static [u8]> {
+    L.binary_search_by_key(&rg, |&(r, _)| r)
         .ok()
-        .map(|i| COLOR_LOOKUP[i].1)
+        .map(|i| L[i].1)
 }
 
 #[inline(always)]
-const fn hex_digit(n: u8) -> u8 {
+const fn hd(n: u8) -> u8 {
     match n {
         0..=9 => b'0' + n,
         _ => b'a' + (n - 10),
@@ -406,88 +418,94 @@ const fn hex_digit(n: u8) -> u8 {
 }
 
 #[inline(always)]
-fn color_to_string(color: &C) -> String {
-    if color.a != 255 {
-        let short = is_short_hex(color.r, color.g, color.b, color.a);
-        let mut buf = [0u8; 9];
-        let slice = if short {
-            buf[0] = b'#';
-            buf[1] = hex_digit(color.r >> 4);
-            buf[2] = hex_digit(color.g >> 4);
-            buf[3] = hex_digit(color.b >> 4);
-            buf[4] = hex_digit(color.a >> 4);
-            &buf[..5]
+fn cs(cl: &C) -> String {
+    if cl.a != 255 {
+        let sh1 = sh(cl.r, cl.g, cl.b, cl.a);
+        let mut bf = [0u8; 9];
+        let sl = if sh1 {
+            bf[0] = b'#';
+            bf[1] = hd(cl.r >> 4);
+            bf[2] = hd(cl.g >> 4);
+            bf[3] = hd(cl.b >> 4);
+            bf[4] = hd(cl.a >> 4);
+            &bf[..5]
         } else {
-            buf[0] = b'#';
-            buf[1] = hex_digit(color.r >> 4);
-            buf[2] = hex_digit(color.r & 0xF);
-            buf[3] = hex_digit(color.g >> 4);
-            buf[4] = hex_digit(color.g & 0xF);
-            buf[5] = hex_digit(color.b >> 4);
-            buf[6] = hex_digit(color.b & 0xF);
-            buf[7] = hex_digit(color.a >> 4);
-            buf[8] = hex_digit(color.a & 0xF);
-            &buf[..9]
+            bf[0] = b'#';
+            bf[1] = hd(cl.r >> 4);
+            bf[2] = hd(cl.r & 0xF);
+            bf[3] = hd(cl.g >> 4);
+            bf[4] = hd(cl.g & 0xF);
+            bf[5] = hd(cl.b >> 4);
+            bf[6] = hd(cl.b & 0xF);
+            bf[7] = hd(cl.a >> 4);
+            bf[8] = hd(cl.a & 0xF);
+            &bf[..9]
         };
-        return unsafe { std::str::from_utf8_unchecked(slice) }.to_string();
+        return unsafe { std::str::from_utf8_unchecked(sl) }.to_string();
     }
 
-    let rgb = ((color.r as u32) << 16) | ((color.g as u32) << 8) | (color.b as u32);
+    let rg = ((cl.r as u32) << 16) | ((cl.g as u32) << 8) | (cl.b as u32);
 
-    if let Some(name) = find_color_name(rgb) {
-        let short = is_short_hex(color.r, color.g, color.b, 255);
-        let max_len = if short { 4 } else { 7 };
-        if name.len() < max_len {
-            return unsafe { std::str::from_utf8_unchecked(name) }.to_string();
+    if let Some(nm) = fn1(rg) {
+        let sh1 = sh(cl.r, cl.g, cl.b, 255);
+        let ml = if sh1 { 4 } else { 7 };
+        if nm.len() < ml {
+            return unsafe { std::str::from_utf8_unchecked(nm) }.to_string();
         }
     }
 
-    let short = is_short_hex(color.r, color.g, color.b, 255);
-    let mut buf = [0u8; 7];
-    let slice = if short {
-        buf[0] = b'#';
-        buf[1] = hex_digit(color.r >> 4);
-        buf[2] = hex_digit(color.g >> 4);
-        buf[3] = hex_digit(color.b >> 4);
-        &buf[..4]
+    let sh1 = sh(cl.r, cl.g, cl.b, 255);
+    let mut bf = [0u8; 7];
+    let sl = if sh1 {
+        bf[0] = b'#';
+        bf[1] = hd(cl.r >> 4);
+        bf[2] = hd(cl.g >> 4);
+        bf[3] = hd(cl.b >> 4);
+        &bf[..4]
     } else {
-        buf[0] = b'#';
-        buf[1] = hex_digit(color.r >> 4);
-        buf[2] = hex_digit(color.r & 0xF);
-        buf[3] = hex_digit(color.g >> 4);
-        buf[4] = hex_digit(color.g & 0xF);
-        buf[5] = hex_digit(color.b >> 4);
-        buf[6] = hex_digit(color.b & 0xF);
-        &buf[..7]
+        bf[0] = b'#';
+        bf[1] = hd(cl.r >> 4);
+        bf[2] = hd(cl.r & 0xF);
+        bf[3] = hd(cl.g >> 4);
+        bf[4] = hd(cl.g & 0xF);
+        bf[5] = hd(cl.b >> 4);
+        bf[6] = hd(cl.b & 0xF);
+        &bf[..7]
     };
-    unsafe { std::str::from_utf8_unchecked(slice) }.to_string()
+    unsafe { std::str::from_utf8_unchecked(sl) }.to_string()
 }
 
 #[inline(always)]
-fn trim_whitespace(s: &[u8]) -> &[u8] {
-    let start = s.iter().position(|&b| !matches!(b, b' ' | b'\t' | b'\n' | b'\r')).unwrap_or(s.len());
-    let end = s.iter().rposition(|&b| !matches!(b, b' ' | b'\t' | b'\n' | b'\r')).map_or(start, |i| i + 1);
-    &s[start..end]
+fn tw(s: &[u8]) -> &[u8] {
+    let st = s
+        .iter()
+        .position(|&b| !matches!(b, b' ' | b'\t' | b'\n' | b'\r'))
+        .unwrap_or(s.len());
+    let ed = s
+        .iter()
+        .rposition(|&b| !matches!(b, b' ' | b'\t' | b'\n' | b'\r'))
+        .map_or(st, |i| i + 1);
+    &s[st..ed]
 }
 
-pub fn shorten_css_color(input: impl AsRef<str>) -> String {
-    let s = input.as_ref().as_bytes();
+pub fn shorten_css_color(i: impl AsRef<str>) -> String {
+    let s = i.as_ref().as_bytes();
     if s.is_empty() {
         return String::new();
     }
-    
-    let trimmed = trim_whitespace(s);
-    
-    if trimmed.len() < 5 {
-        if ascii_case_eq(trimmed, b"#f00") {
+
+    let tr = tw(s);
+
+    if tr.len() < 5 {
+        if e(tr, b"#f00") {
             return "red".to_string();
         }
-        return unsafe { std::str::from_utf8_unchecked(trimmed) }.to_ascii_lowercase();
+        return unsafe { std::str::from_utf8_unchecked(tr) }.to_ascii_lowercase();
     }
 
-    match parse_color(trimmed) {
-        Some(color) => color_to_string(&color),
-        None => unsafe { std::str::from_utf8_unchecked(trimmed) }.to_ascii_lowercase(),
+    match pc(tr) {
+        Some(cl) => cs(&cl),
+        None => unsafe { std::str::from_utf8_unchecked(tr) }.to_ascii_lowercase(),
     }
 }
 
