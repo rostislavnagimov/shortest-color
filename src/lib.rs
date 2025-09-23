@@ -10,8 +10,6 @@ struct C {
     a: u8,
 }
 
-const R: f32 = 57.29578;
-
 #[inline(always)]
 const fn h(b: u8) -> u8 {
     match b {
@@ -20,14 +18,6 @@ const fn h(b: u8) -> u8 {
         b'a'..=b'f' => b - b'a' + 10,
         _ => 255,
     }
-}
-
-#[inline(always)]
-fn e(a: &[u8], b: &[u8]) -> bool {
-    a.len() == b.len()
-        && a.iter()
-            .zip(b.iter())
-            .all(|(&x, &y)| (x | 0x20) == (y | 0x20))
 }
 
 #[inline(always)]
@@ -168,7 +158,7 @@ fn al(b: &[u8]) -> Option<u8> {
 fn ew(sl: &[u8], sf: &[u8]) -> bool {
     let sl_l = sl.len();
     let sf_l = sf.len();
-    sl_l >= sf_l && e(&sl[sl_l - sf_l..], sf)
+    sl_l >= sf_l && sl[sl_l - sf_l..].eq_ignore_ascii_case(sf)
 }
 
 #[inline(always)]
@@ -186,7 +176,7 @@ fn an(s: &str) -> Option<f32> {
     } else if ew(b, b"deg") {
         (&s[..l - 3], 1.0)
     } else if ew(b, b"rad") {
-        (&s[..l - 3], R)
+        (&s[..l - 3], 57.29578)
     } else {
         (s, 1.0)
     };
@@ -222,10 +212,6 @@ fn hs(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
 
 #[inline(always)]
 fn hc(s: &[u8]) -> Option<C> {
-    let l = s.len();
-    if l == 0 || s[0] != b'#' {
-        return None;
-    }
     let hp = &s[1..];
     match hp.len() {
         3 => Some(C {
@@ -256,11 +242,21 @@ fn hc(s: &[u8]) -> Option<C> {
     }
 }
 
+static NAME_MAP: LazyLock<HashMap<Vec<u8>, C>> = LazyLock::new(|| {
+    let mut map = HashMap::new();
+    for &(nm, hx) in K {
+        if let Some(c) = hc(hx) {
+            let lower_name = nm.iter().map(|&b| b | 0x20).collect();
+            map.insert(lower_name, c);
+        }
+    }
+    map
+});
+
 #[inline(always)]
 fn lk(nm: &[u8]) -> Option<C> {
-    K.iter()
-        .find(|&&(n, _)| e(n, nm))
-        .and_then(|&(_, hx)| hc(hx))
+    let lower_nm: Vec<u8> = nm.iter().map(|&b| b | 0x20).collect();
+    NAME_MAP.get(&lower_nm).copied()
 }
 
 #[inline(always)]
@@ -305,15 +301,12 @@ fn ar(ag: &[u8]) -> Option<([&[u8]; 4], usize)> {
 #[inline(always)]
 fn pc(s: &[u8]) -> Option<C> {
     let l = s.len();
-    if l == 0 {
-        return None;
-    }
 
     if s[0] == b'#' {
         return hc(s);
     }
 
-    if l < 4 || (s[3] != b'(' && s[4] != b'(') {
+    if s[3] != b'(' && s[4] != b'(' {
         return lk(s);
     }
 
@@ -322,24 +315,16 @@ fn pc(s: &[u8]) -> Option<C> {
     }
 
     let (ft, ha, st) = match &s[..3] {
-        px if e(b"rgb", px) => {
-            if s[3] == b'(' {
-                (0, false, 4)
-            } else if s[3] == b'a' {
-                (0, true, 5)
-            } else {
-                return None;
-            }
-        }
-        px if e(b"hsl", px) => {
-            if s[3] == b'(' {
-                (1, false, 4)
-            } else if s[3] == b'a' {
-                (1, true, 5)
-            } else {
-                return None;
-            }
-        }
+        px if px.eq_ignore_ascii_case(b"rgb") => match s[3] {
+            b'(' => (0, false, 4),
+            b'a' => (0, true, 5),
+            _ => return None,
+        },
+        px if px.eq_ignore_ascii_case(b"hsl") => match s[3] {
+            b'(' => (1, false, 4),
+            b'a' => (1, true, 5),
+            _ => return None,
+        },
         _ => return None,
     };
 
@@ -388,18 +373,28 @@ const fn sh(r: u8, g: u8, b: u8, a: u8) -> bool {
 }
 
 static L: LazyLock<Vec<(u32, &'static [u8])>> = LazyLock::new(|| {
+    let v: Vec<_> = K
+        .iter()
+        .filter_map(|&(nm, hx)| {
+            hc(hx).and_then(|cl| {
+                if cl.a == 255 {
+                    let rg = ((cl.r as u32) << 16) | ((cl.g as u32) << 8) | (cl.b as u32);
+                    Some((rg, nm))
+                } else {
+                    None
+                }
+            })
+        })
+        .collect();
+
     let mut m = HashMap::new();
-    for &(nm, hx) in K {
-        if let Some(cl) = hc(hx) {
-            if cl.a == 255 {
-                let rg = ((cl.r as u32) << 16) | ((cl.g as u32) << 8) | (cl.b as u32);
-                m.entry(rg).or_insert(nm);
-            }
-        }
+    for (rg, nm) in v {
+        m.entry(rg).or_insert(nm);
     }
-    let mut v: Vec<_> = m.into_iter().collect();
-    v.sort_unstable_by_key(|&(rg, _)| rg);
-    v
+
+    let mut result: Vec<_> = m.into_iter().collect();
+    result.sort_unstable_by_key(|&(rg, _)| rg);
+    result
 });
 
 #[inline(always)]
@@ -488,6 +483,16 @@ fn tw(s: &[u8]) -> &[u8] {
     &s[st..ed]
 }
 
+#[inline(always)]
+fn to_lower_fast(s: &[u8]) -> String {
+    let mut result = String::with_capacity(s.len());
+    unsafe {
+        let bytes = result.as_mut_vec();
+        bytes.extend(s.iter().map(|&b| b | 0x20));
+    }
+    result
+}
+
 pub fn shorten_css_color(i: impl AsRef<str>) -> String {
     let s = i.as_ref().as_bytes();
     if s.is_empty() {
@@ -497,15 +502,15 @@ pub fn shorten_css_color(i: impl AsRef<str>) -> String {
     let tr = tw(s);
 
     if tr.len() < 5 {
-        if e(tr, b"#f00") {
-            return "red".to_string();
+        if tr.eq_ignore_ascii_case(b"#f00") {
+            return String::from("red");
         }
-        return unsafe { std::str::from_utf8_unchecked(tr) }.to_ascii_lowercase();
+        return to_lower_fast(tr);
     }
 
     match pc(tr) {
         Some(cl) => cs(&cl),
-        None => unsafe { std::str::from_utf8_unchecked(tr) }.to_ascii_lowercase(),
+        None => to_lower_fast(tr),
     }
 }
 
