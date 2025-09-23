@@ -153,7 +153,7 @@ fn main() {
         "hsla(240, 100%, 50%, 1)",
         "transparent",
         "invalid",
-        "#f00"
+        "#f00",
     ];
 
     results.push(benchmark_function("mixed_workload", || {
@@ -181,7 +181,7 @@ fn main() {
         "#999",
         "#ccc",
         "#f5f5f5",
-        "#f00"
+        "#f00",
     ];
 
     results.push(benchmark_function("realistic_css", || {
