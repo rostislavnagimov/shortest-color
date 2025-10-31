@@ -314,7 +314,7 @@ fn pc(s: &[u8]) -> Option<C> {
         return None;
     }
 
-    let (ft, ha, st) = match &s[..3] {
+    let (f, ha, st) = match &s[..3] {
         px if px.eq_ignore_ascii_case(b"rgb") => match s[3] {
             b'(' => (0, false, 4),
             b'a' => (0, true, 5),
@@ -331,8 +331,7 @@ fn pc(s: &[u8]) -> Option<C> {
     let (pt, c) = ar(&s[st..l - 1])?;
 
     if ha && c == 2 {
-        let nm = pt[0];
-        if let Some(bc) = lk(nm) {
+        if let Some(bc) = lk(pt[0]) {
             let a = al(pt[1])?;
             return Some(C { a, ..bc });
         }
@@ -346,7 +345,7 @@ fn pc(s: &[u8]) -> Option<C> {
 
     let a = if ha { al(pt[3])? } else { 255 };
 
-    match ft {
+    match f {
         0 => {
             let rg = rt(pt[0])?;
             let g = rt(pt[1])?;
@@ -472,25 +471,25 @@ fn cs(cl: &C) -> String {
 
 #[inline(always)]
 fn tw(s: &[u8]) -> &[u8] {
-    let st = s
+    let a = s
         .iter()
         .position(|&b| !matches!(b, b' ' | b'\t' | b'\n' | b'\r'))
         .unwrap_or(s.len());
-    let ed = s
+    let z = s
         .iter()
         .rposition(|&b| !matches!(b, b' ' | b'\t' | b'\n' | b'\r'))
-        .map_or(st, |i| i + 1);
-    &s[st..ed]
+        .map_or(a, |i| i + 1);
+    &s[a..z]
 }
 
 #[inline(always)]
-fn to_lower_fast(s: &[u8]) -> String {
-    let mut result = String::with_capacity(s.len());
+fn tlf(s: &[u8]) -> String {
+    let mut r = String::with_capacity(s.len());
     unsafe {
-        let bytes = result.as_mut_vec();
-        bytes.extend(s.iter().map(|&b| b | 0x20));
+        let b = r.as_mut_vec();
+        b.extend(s.iter().map(|&b| b | 0x20));
     }
-    result
+    r
 }
 
 pub fn shorten_css_color(i: impl AsRef<str>) -> String {
@@ -505,13 +504,10 @@ pub fn shorten_css_color(i: impl AsRef<str>) -> String {
         if tr.eq_ignore_ascii_case(b"#f00") {
             return String::from("red");
         }
-        return to_lower_fast(tr);
+        return tlf(tr);
     }
 
-    match pc(tr) {
-        Some(cl) => cs(&cl),
-        None => to_lower_fast(tr),
-    }
+    pc(tr).map_or_else(|| tlf(tr), |x| cs(&x))
 }
 
 const K: &[(&[u8], &[u8])] = &[
