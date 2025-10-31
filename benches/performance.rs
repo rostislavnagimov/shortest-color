@@ -69,6 +69,10 @@ fn main() {
         shorten_css_color("#ff0000");
     }));
 
+    results.push(benchmark_function("#f00", || {
+        shorten_css_color("#f00");
+    }));
+
     results.push(benchmark_function("hex_shorthand", || {
         shorten_css_color("#aabbcc");
     }));
@@ -149,6 +153,7 @@ fn main() {
         "hsla(240, 100%, 50%, 1)",
         "transparent",
         "invalid",
+        "#f00",
     ];
 
     results.push(benchmark_function("mixed_workload", || {
@@ -176,6 +181,7 @@ fn main() {
         "#999",
         "#ccc",
         "#f5f5f5",
+        "#f00",
     ];
 
     results.push(benchmark_function("realistic_css", || {

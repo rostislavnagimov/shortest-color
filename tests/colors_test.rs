@@ -18,6 +18,7 @@ fn test_hex_colors() {
     assert_eq!(shorten_css_color("#FF0000"), "red");
     assert_eq!(shorten_css_color("#FFFFFF"), "#fff");
     assert_eq!(shorten_css_color("#d2b48c"), "tan");
+    assert_eq!(shorten_css_color("#F00"), "red");
 }
 
 #[test]

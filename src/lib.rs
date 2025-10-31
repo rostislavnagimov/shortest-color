@@ -10,37 +10,30 @@ struct C {
     a: u8,
 }
 
-static H: [u8; 256] = {
-    const I: u8 = 255;
-    let mut t = [I; 256];
-    let mut i = 0;
-    while i < 10 {
-        t[(b'0' + i) as usize] = i;
-        i += 1;
-    }
-    let mut i = 0;
-    while i < 6 {
-        t[(b'A' + i) as usize] = 10 + i;
-        t[(b'a' + i) as usize] = 10 + i;
-        i += 1;
-    }
-    t
-};
-
 #[inline(always)]
-const fn u(b: &[u8], i: usize) -> Option<u8> {
-    let h = H[b[i] as usize];
-    let l = H[b[i + 1] as usize];
-    if h == 255 || l == 255 {
-        None
-    } else {
-        Some((h << 4) | l)
+const fn h(b: u8) -> u8 {
+    match b {
+        b'0'..=b'9' => b - b'0',
+        b'A'..=b'F' => b - b'A' + 10,
+        b'a'..=b'f' => b - b'a' + 10,
+        _ => 255,
     }
 }
 
 #[inline(always)]
-const fn v(b: u8) -> Option<u8> {
-    let v = H[b as usize];
+const fn p(b: &[u8], i: usize) -> Option<u8> {
+    let h1 = h(b[i]);
+    let l = h(b[i + 1]);
+    if h1 == 255 || l == 255 {
+        None
+    } else {
+        Some((h1 << 4) | l)
+    }
+}
+
+#[inline(always)]
+const fn sg(b: u8) -> Option<u8> {
+    let v = h(b);
     if v == 255 {
         None
     } else {
@@ -48,155 +41,166 @@ const fn v(b: u8) -> Option<u8> {
     }
 }
 
-fn w(b: &[u8], m: f32, n: bool) -> Option<f32> {
-    if b.is_empty() || b.len() > 8 {
+#[inline(always)]
+fn n(b: &[u8], m: f32, a: bool) -> Option<f32> {
+    let l = b.len();
+    if l == 0 || l > 8 {
         return None;
     }
 
     let mut r = 0.0f32;
-    let mut has_dot = false;
-    let mut divisor = 10.0f32;
-    let p;
-    let neg = n && b[0] == b'-';
-
-    if neg {
-        p = 1;
-        if b.len() == 1 {
+    let mut d = false;
+    let mut dv = 10.0f32;
+    let ng = a && b[0] == b'-';
+    let st = if ng {
+        if l == 1 {
             return None;
         }
+        1
     } else {
-        p = 0;
-        if !n && b[0] == b'-' {
+        if !a && b[0] == b'-' {
             return None;
         }
-    }
+        0
+    };
 
-    for &c in &b[p..] {
+    for &c in &b[st..] {
         match c {
             b'0'..=b'9' => {
-                let digit = (c - b'0') as f32;
-                if has_dot {
-                    r += digit / divisor;
-                    divisor *= 10.0;
-                    if divisor > 10000.0 {
+                let dt = (c - b'0') as f32;
+                if d {
+                    r += dt / dv;
+                    dv *= 10.0;
+                    if dv > 10000.0 {
                         break;
                     }
                 } else {
-                    r = r * 10.0 + digit;
-                    if r > m && !neg {
+                    r = r * 10.0 + dt;
+                    if r > m && !ng {
                         return None;
                     }
                 }
             }
             b'.' => {
-                if has_dot {
+                if d {
                     return None;
                 }
-                has_dot = true;
+                d = true;
             }
             _ => return None,
         }
     }
 
-    let res = if neg { -r } else { r };
-    if res > m || (!n && res < 0.0) {
-        return None;
+    let f = if ng { -r } else { r };
+    if f > m || (!a && f < 0.0) {
+        None
+    } else {
+        Some(f)
     }
-    Some(res)
 }
 
-fn x(b: &[u8]) -> Option<u8> {
-    if b.is_empty() || b.len() > 6 {
+#[inline(always)]
+fn rt(b: &[u8]) -> Option<u8> {
+    let l = b.len();
+    if l == 0 || l > 6 {
         return None;
     }
 
     if !b.contains(&b'.') {
-        let mut r = 0u32;
+        let mut rs = 0u32;
         for &c in b {
             if !c.is_ascii_digit() {
                 return None;
             }
-            r = r * 10 + (c - b'0') as u32;
-            if r > 255 {
+            rs = rs * 10 + (c - b'0') as u32;
+            if rs > 255 {
                 return None;
             }
         }
-        return Some(r as u8);
+        return Some(rs as u8);
     }
 
-    let r = w(b, 255.9, false)?;
-    Some((r + 0.5) as u8)
-}
-
-fn y(b: &[u8]) -> Option<f32> {
-    if b.len() < 2 || b.len() > 6 || b.last() != Some(&b'%') {
-        return None;
-    }
-
-    let n = &b[..b.len() - 1];
-    let r = w(n, 100.0, true)?;
-    if !(0.0..=100.0).contains(&r) {
-        return None;
-    }
-    Some(r)
-}
-
-fn z(b: &[u8]) -> Option<u8> {
-    if b.is_empty() {
-        return None;
-    }
-
-    if b.last() == Some(&b'%') {
-        let p = y(b)?;
-        return Some((p * 2.55 + 0.5) as u8);
-    }
-
-    let r = w(b, 1.0, false)?;
-    Some((r * 255.0 + 0.5) as u8)
+    let rt = n(b, 255.9, false)?;
+    Some((rt + 0.5) as u8)
 }
 
 #[inline(always)]
-fn a(slice: &[u8], suffix: &[u8]) -> bool {
-    slice.len() >= suffix.len() && slice[slice.len() - suffix.len()..].eq_ignore_ascii_case(suffix)
+fn pr(b: &[u8]) -> Option<f32> {
+    let l = b.len();
+    if !(2..=6).contains(&l) || b[l - 1] != b'%' {
+        return None;
+    }
+
+    let np = &b[..l - 1];
+    let rs = n(np, 100.0, true)?;
+    if !(0.0..=100.0).contains(&rs) {
+        return None;
+    }
+    Some(rs)
 }
 
-fn m(s: &str) -> Option<f32> {
-    let b = s.as_bytes();
+#[inline(always)]
+fn al(b: &[u8]) -> Option<u8> {
     if b.is_empty() {
         return None;
     }
 
-    let (np_str, mul) = if a(b, b"grad") {
-        (&s[..s.len() - 4], 0.9)
-    } else if a(b, b"turn") {
-        (&s[..s.len() - 4], 360.0)
-    } else if a(b, b"deg") {
-        (&s[..s.len() - 3], 1.0)
-    } else if a(b, b"rad") {
-        (&s[..s.len() - 3], 57.295_78)
+    if b[b.len() - 1] == b'%' {
+        let pc = pr(b)?;
+        return Some((pc * 2.55 + 0.5) as u8);
+    }
+
+    let rs = n(b, 1.0, false)?;
+    Some((rs * 255.0 + 0.5) as u8)
+}
+
+#[inline(always)]
+fn ew(sl: &[u8], sf: &[u8]) -> bool {
+    let sl_l = sl.len();
+    let sf_l = sf.len();
+    sl_l >= sf_l && sl[sl_l - sf_l..].eq_ignore_ascii_case(sf)
+}
+
+#[inline(always)]
+fn an(s: &str) -> Option<f32> {
+    let b = s.as_bytes();
+    let l = b.len();
+    if l == 0 {
+        return None;
+    }
+
+    let (ns, mu) = if ew(b, b"grad") {
+        (&s[..l - 4], 0.9)
+    } else if ew(b, b"turn") {
+        (&s[..l - 4], 360.0)
+    } else if ew(b, b"deg") {
+        (&s[..l - 3], 1.0)
+    } else if ew(b, b"rad") {
+        (&s[..l - 3], 57.29578)
     } else {
         (s, 1.0)
     };
 
-    let h = w(np_str.as_bytes(), f32::MAX, true)?;
-    Some(((h * mul % 360.0) + 360.0) % 360.0)
+    let hu = n(ns.as_bytes(), f32::MAX, true)?;
+    Some(((hu * mu % 360.0) + 360.0) % 360.0)
 }
 
-fn c(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
-    let s = s * 0.01;
-    let l = l * 0.01;
-    let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
-    let hs = h / 60.0;
-    let x = c * (1.0 - ((hs % 2.0) - 1.0).abs());
-    let m = l - c * 0.5;
+#[inline(always)]
+fn hs(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
+    let sn = s * 0.01;
+    let ln = l * 0.01;
+    let ch = (1.0 - (2.0 * ln - 1.0).abs()) * sn;
+    let hc = h / 60.0;
+    let x = ch * (1.0 - ((hc % 2.0) - 1.0).abs());
+    let m = ln - ch * 0.5;
 
-    let (r, g, b) = match hs as u8 {
-        0 => (c, x, 0.0),
-        1 => (x, c, 0.0),
-        2 => (0.0, c, x),
-        3 => (0.0, x, c),
-        4 => (x, 0.0, c),
-        _ => (c, 0.0, x),
+    let (r, g, b) = match hc as u8 {
+        0 => (ch, x, 0.0),
+        1 => (x, ch, 0.0),
+        2 => (0.0, ch, x),
+        3 => (0.0, x, ch),
+        4 => (x, 0.0, ch),
+        _ => (ch, 0.0, x),
     };
 
     (
@@ -206,368 +210,454 @@ fn c(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
     )
 }
 
-fn d(s: &str) -> Option<C> {
-    let b = s.as_bytes();
-    if b.is_empty() || b[0] != b'#' {
-        return None;
-    }
-    let h = &b[1..];
-    match h.len() {
+#[inline(always)]
+fn hc(s: &[u8]) -> Option<C> {
+    let hp = &s[1..];
+    match hp.len() {
         3 => Some(C {
-            r: v(h[0])?,
-            g: v(h[1])?,
-            b: v(h[2])?,
+            r: sg(hp[0])?,
+            g: sg(hp[1])?,
+            b: sg(hp[2])?,
             a: 255,
         }),
         4 => Some(C {
-            r: v(h[0])?,
-            g: v(h[1])?,
-            b: v(h[2])?,
-            a: v(h[3])?,
+            r: sg(hp[0])?,
+            g: sg(hp[1])?,
+            b: sg(hp[2])?,
+            a: sg(hp[3])?,
         }),
         6 => Some(C {
-            r: u(h, 0)?,
-            g: u(h, 2)?,
-            b: u(h, 4)?,
+            r: p(hp, 0)?,
+            g: p(hp, 2)?,
+            b: p(hp, 4)?,
             a: 255,
         }),
         8 => Some(C {
-            r: u(h, 0)?,
-            g: u(h, 2)?,
-            b: u(h, 4)?,
-            a: u(h, 6)?,
+            r: p(hp, 0)?,
+            g: p(hp, 2)?,
+            b: p(hp, 4)?,
+            a: p(hp, 6)?,
         }),
         _ => None,
     }
 }
 
-fn e(name: &str) -> Option<C> {
-    K.iter()
-        .find(|&&(n, _)| n.eq_ignore_ascii_case(name))
-        .and_then(|&(_, hex)| d(hex))
+static NAME_MAP: LazyLock<HashMap<Vec<u8>, C>> = LazyLock::new(|| {
+    let mut map = HashMap::new();
+    for &(nm, hx) in K {
+        if let Some(c) = hc(hx) {
+            let lower_name = nm.iter().map(|&b| b | 0x20).collect();
+            map.insert(lower_name, c);
+        }
+    }
+    map
+});
+
+#[inline(always)]
+fn lk(nm: &[u8]) -> Option<C> {
+    let lower_nm: Vec<u8> = nm.iter().map(|&b| b | 0x20).collect();
+    NAME_MAP.get(&lower_nm).copied()
 }
 
-fn f(args: &[u8]) -> Option<([&[u8]; 4], usize)> {
-    let mut parts = [&[][..]; 4];
-    let mut count = 0;
-    let mut start = 0;
-    let mut in_arg = false;
+#[inline(always)]
+fn ar(ag: &[u8]) -> Option<([&[u8]; 4], usize)> {
+    let mut pt = [&[][..]; 4];
+    let mut c = 0;
+    let mut st = 0;
+    let mut ia = false;
 
-    for (i, &b) in args.iter().enumerate() {
-        let is_sep = b == b' ' || b == b'\t' || b == b',';
+    for i in 0..ag.len() {
+        let b = ag[i];
+        let is = matches!(b, b' ' | b'\t' | b',');
 
-        if !is_sep && !in_arg {
-            start = i;
-            in_arg = true;
-        } else if is_sep && in_arg {
-            if count >= 4 {
+        if !is && !ia {
+            st = i;
+            ia = true;
+        } else if is && ia {
+            if c >= 4 {
                 return None;
             }
-            parts[count] = &args[start..i];
-            count += 1;
-            in_arg = false;
+            pt[c] = &ag[st..i];
+            c += 1;
+            ia = false;
         }
     }
 
-    if in_arg {
-        if count >= 4 {
+    if ia {
+        if c >= 4 {
             return None;
         }
-        parts[count] = &args[start..];
-        count += 1;
+        pt[c] = &ag[st..];
+        c += 1;
     }
 
-    if !(2..=4).contains(&count) {
-        return None;
+    if (2..=4).contains(&c) {
+        Some((pt, c))
+    } else {
+        None
     }
-    Some((parts, count))
 }
 
-fn g(s: &str) -> Option<C> {
-    let b = s.as_bytes();
+#[inline(always)]
+fn pc(s: &[u8]) -> Option<C> {
+    let l = s.len();
 
-    if b[0] == b'#' {
-        return d(s);
+    if s[0] == b'#' {
+        return hc(s);
     }
 
-    if !b.contains(&b'(') {
-        return e(s);
+    if s[3] != b'(' && s[4] != b'(' {
+        return lk(s);
     }
 
-    let l = b.len();
-    if b.last() != Some(&b')') {
+    if s[l - 1] != b')' {
         return None;
     }
 
-    let (func_type, has_alpha, start) = if b.len() >= 5 && b[..5].eq_ignore_ascii_case(b"rgba(") {
-        (0, true, 5)
-    } else if b.len() >= 4 && b[..4].eq_ignore_ascii_case(b"rgb(") {
-        (0, false, 4)
-    } else if b.len() >= 5 && b[..5].eq_ignore_ascii_case(b"hsla(") {
-        (1, true, 5)
-    } else if b.len() >= 4 && b[..4].eq_ignore_ascii_case(b"hsl(") {
-        (1, false, 4)
-    } else {
-        return None;
+    let (f, ha, st) = match &s[..3] {
+        px if px.eq_ignore_ascii_case(b"rgb") => match s[3] {
+            b'(' => (0, false, 4),
+            b'a' => (0, true, 5),
+            _ => return None,
+        },
+        px if px.eq_ignore_ascii_case(b"hsl") => match s[3] {
+            b'(' => (1, false, 4),
+            b'a' => (1, true, 5),
+            _ => return None,
+        },
+        _ => return None,
     };
 
-    let args = &b[start..l - 1];
-    let (parts, count) = f(args)?;
+    let (pt, c) = ar(&s[st..l - 1])?;
 
-    if has_alpha && count == 2 {
-        let name = unsafe { std::str::from_utf8_unchecked(parts[0]) };
-        if let Some(base) = e(name) {
-            let alpha = z(parts[1])?;
-            return Some(C { a: alpha, ..base });
+    if ha && c == 2 {
+        if let Some(bc) = lk(pt[0]) {
+            let a = al(pt[1])?;
+            return Some(C { a, ..bc });
         }
         return None;
     }
 
-    let expected_parts = if has_alpha { 4 } else { 3 };
-    if count != expected_parts {
+    let ep = if ha { 4 } else { 3 };
+    if c != ep {
         return None;
     }
 
-    let alpha = if has_alpha { z(parts[3])? } else { 255 };
+    let a = if ha { al(pt[3])? } else { 255 };
 
-    match func_type {
+    match f {
         0 => {
-            let r = x(parts[0])?;
-            let g = x(parts[1])?;
-            let b = x(parts[2])?;
-            Some(C { r, g, b, a: alpha })
+            let rg = rt(pt[0])?;
+            let g = rt(pt[1])?;
+            let b = rt(pt[2])?;
+            Some(C { r: rg, g, b, a })
         }
         _ => {
-            let h_str = unsafe { std::str::from_utf8_unchecked(parts[0]) };
-            let h = m(h_str)?;
-            let s = y(parts[1])?;
-            let l = y(parts[2])?;
-            let (r, g, b) = c(h, s, l);
-            Some(C { r, g, b, a: alpha })
+            let hs_str = std::str::from_utf8(pt[0]).ok()?;
+            let hu = an(hs_str)?;
+            let sa = pr(pt[1])?;
+            let li = pr(pt[2])?;
+            let (r, g, b) = hs(hu, sa, li);
+            Some(C { r, g, b, a })
         }
     }
 }
 
 #[inline(always)]
-const fn h(r: u8, g: u8, b: u8, a: u8) -> bool {
+const fn sh(r: u8, g: u8, b: u8, a: u8) -> bool {
     (r & 0x0F) * 0x11 == r
         && (g & 0x0F) * 0x11 == g
         && (b & 0x0F) * 0x11 == b
         && (a & 0x0F) * 0x11 == a
 }
 
-static N: LazyLock<Vec<(u32, &'static str)>> = LazyLock::new(|| {
+static L: LazyLock<Vec<(u32, &'static [u8])>> = LazyLock::new(|| {
+    let v: Vec<_> = K
+        .iter()
+        .filter_map(|&(nm, hx)| {
+            hc(hx).and_then(|cl| {
+                if cl.a == 255 {
+                    let rg = ((cl.r as u32) << 16) | ((cl.g as u32) << 8) | (cl.b as u32);
+                    Some((rg, nm))
+                } else {
+                    None
+                }
+            })
+        })
+        .collect();
+
     let mut m = HashMap::new();
-    for &(n, h) in K {
-        if let Some(c) = d(h) {
-            if c.a == 255 {
-                let rgb = ((c.r as u32) << 16) | ((c.g as u32) << 8) | (c.b as u32);
-                m.entry(rgb).or_insert(n);
-            }
-        }
+    for (rg, nm) in v {
+        m.entry(rg).or_insert(nm);
     }
-    let mut vec: Vec<_> = m.into_iter().collect();
-    vec.sort_unstable_by_key(|&(rgb, _)| rgb);
-    vec
+
+    let mut result: Vec<_> = m.into_iter().collect();
+    result.sort_unstable_by_key(|&(rg, _)| rg);
+    result
 });
 
-fn i(rgb: u32) -> Option<&'static str> {
-    N.binary_search_by_key(&rgb, |&(r, _)| r)
+#[inline(always)]
+fn fn1(rg: u32) -> Option<&'static [u8]> {
+    L.binary_search_by_key(&rg, |&(r, _)| r)
         .ok()
-        .map(|i| N[i].1)
+        .map(|i| L[i].1)
 }
 
-fn j(c: &C) -> String {
-    if c.a != 255 {
-        return if h(c.r, c.g, c.b, c.a) {
-            format!("#{:x}{:x}{:x}{:x}", c.r >> 4, c.g >> 4, c.b >> 4, c.a >> 4)
+#[inline(always)]
+const fn hd(n: u8) -> u8 {
+    match n {
+        0..=9 => b'0' + n,
+        _ => b'a' + (n - 10),
+    }
+}
+
+#[inline(always)]
+fn cs(cl: &C) -> String {
+    if cl.a != 255 {
+        let sh1 = sh(cl.r, cl.g, cl.b, cl.a);
+        let mut bf = [0u8; 9];
+        let sl = if sh1 {
+            bf[0] = b'#';
+            bf[1] = hd(cl.r >> 4);
+            bf[2] = hd(cl.g >> 4);
+            bf[3] = hd(cl.b >> 4);
+            bf[4] = hd(cl.a >> 4);
+            &bf[..5]
         } else {
-            format!("#{:02x}{:02x}{:02x}{:02x}", c.r, c.g, c.b, c.a)
+            bf[0] = b'#';
+            bf[1] = hd(cl.r >> 4);
+            bf[2] = hd(cl.r & 0xF);
+            bf[3] = hd(cl.g >> 4);
+            bf[4] = hd(cl.g & 0xF);
+            bf[5] = hd(cl.b >> 4);
+            bf[6] = hd(cl.b & 0xF);
+            bf[7] = hd(cl.a >> 4);
+            bf[8] = hd(cl.a & 0xF);
+            &bf[..9]
         };
+        return unsafe { std::str::from_utf8_unchecked(sl) }.to_string();
     }
 
-    let x = ((c.r as u32) << 16) | ((c.g as u32) << 8) | (c.b as u32);
+    let rg = ((cl.r as u32) << 16) | ((cl.g as u32) << 8) | (cl.b as u32);
 
-    if let Some(q) = i(x) {
-        let i = h(c.r, c.g, c.b, 255);
-        let z = if i { 4 } else { 7 };
-        if q.len() < z {
-            return q.to_string();
+    if let Some(nm) = fn1(rg) {
+        let sh1 = sh(cl.r, cl.g, cl.b, 255);
+        let ml = if sh1 { 4 } else { 7 };
+        if nm.len() < ml {
+            return unsafe { std::str::from_utf8_unchecked(nm) }.to_string();
         }
     }
 
-    if h(c.r, c.g, c.b, 255) {
-        format!("#{:x}{:x}{:x}", c.r >> 4, c.g >> 4, c.b >> 4)
+    let sh1 = sh(cl.r, cl.g, cl.b, 255);
+    let mut bf = [0u8; 7];
+    let sl = if sh1 {
+        bf[0] = b'#';
+        bf[1] = hd(cl.r >> 4);
+        bf[2] = hd(cl.g >> 4);
+        bf[3] = hd(cl.b >> 4);
+        &bf[..4]
     } else {
-        format!("#{:02x}{:02x}{:02x}", c.r, c.g, c.b)
-    }
+        bf[0] = b'#';
+        bf[1] = hd(cl.r >> 4);
+        bf[2] = hd(cl.r & 0xF);
+        bf[3] = hd(cl.g >> 4);
+        bf[4] = hd(cl.g & 0xF);
+        bf[5] = hd(cl.b >> 4);
+        bf[6] = hd(cl.b & 0xF);
+        &bf[..7]
+    };
+    unsafe { std::str::from_utf8_unchecked(sl) }.to_string()
 }
 
-pub fn shorten_css_color(s: &str) -> String {
-    let t = s.trim();
-
-    if t.len() < 5 {
-        return if t.eq_ignore_ascii_case("#f00") {
-            "red".to_string()
-        } else {
-            t.to_ascii_lowercase()
-        };
-    }
-
-    match g(t) {
-        Some(c) => j(&c),
-        None => s.to_string(),
-    }
+#[inline(always)]
+fn tw(s: &[u8]) -> &[u8] {
+    let a = s
+        .iter()
+        .position(|&b| !matches!(b, b' ' | b'\t' | b'\n' | b'\r'))
+        .unwrap_or(s.len());
+    let z = s
+        .iter()
+        .rposition(|&b| !matches!(b, b' ' | b'\t' | b'\n' | b'\r'))
+        .map_or(a, |i| i + 1);
+    &s[a..z]
 }
 
-const K: &[(&str, &str)] = &[
-    ("aliceblue", "#f0f8ff"),
-    ("antiquewhite", "#faebd7"),
-    ("aqua", "#0ff"),
-    ("aquamarine", "#7fffd4"),
-    ("azure", "#f0ffff"),
-    ("beige", "#f5f5dc"),
-    ("bisque", "#ffe4c4"),
-    ("black", "#000"),
-    ("blanchedalmond", "#ffebcd"),
-    ("blue", "#00f"),
-    ("blueviolet", "#8a2be2"),
-    ("brown", "#a52a2a"),
-    ("burlywood", "#deb887"),
-    ("cadetblue", "#5f9ea0"),
-    ("chartreuse", "#7fff00"),
-    ("chocolate", "#d2691e"),
-    ("coral", "#ff7f50"),
-    ("cornflowerblue", "#6495ed"),
-    ("cornsilk", "#fff8dc"),
-    ("crimson", "#dc143c"),
-    ("cyan", "#0ff"),
-    ("darkblue", "#00008b"),
-    ("darkcyan", "#008b8b"),
-    ("darkgoldenrod", "#b8860b"),
-    ("darkgray", "#a9a9a9"),
-    ("darkgreen", "#006400"),
-    ("darkgrey", "#a9a9a9"),
-    ("darkkhaki", "#bdb76b"),
-    ("darkmagenta", "#8b008b"),
-    ("darkolivegreen", "#556b2f"),
-    ("darkorange", "#ff8c00"),
-    ("darkorchid", "#9932cc"),
-    ("darkred", "#8b0000"),
-    ("darksalmon", "#e9967a"),
-    ("darkseagreen", "#8fbc8f"),
-    ("darkslateblue", "#483d8b"),
-    ("darkslategray", "#2f4f4f"),
-    ("darkslategrey", "#2f4f4f"),
-    ("darkturquoise", "#00ced1"),
-    ("darkviolet", "#9400d3"),
-    ("deeppink", "#ff1493"),
-    ("deepskyblue", "#00bfff"),
-    ("dimgray", "#696969"),
-    ("dimgrey", "#696969"),
-    ("dodgerblue", "#1e90ff"),
-    ("firebrick", "#b22222"),
-    ("floralwhite", "#fffaf0"),
-    ("forestgreen", "#228b22"),
-    ("fuchsia", "#f0f"),
-    ("gainsboro", "#dcdcdc"),
-    ("ghostwhite", "#f8f8ff"),
-    ("gold", "#ffd700"),
-    ("goldenrod", "#daa520"),
-    ("gray", "#808080"),
-    ("green", "#008000"),
-    ("greenyellow", "#adff2f"),
-    ("grey", "#808080"),
-    ("honeydew", "#f0fff0"),
-    ("hotpink", "#ff69b4"),
-    ("indianred", "#cd5c5c"),
-    ("indigo", "#4b0082"),
-    ("ivory", "#fffff0"),
-    ("khaki", "#f0e68c"),
-    ("lavender", "#e6e6fa"),
-    ("lavenderblush", "#fff0f5"),
-    ("lawngreen", "#7cfc00"),
-    ("lemonchiffon", "#fffacd"),
-    ("lightblue", "#add8e6"),
-    ("lightcoral", "#f08080"),
-    ("lightcyan", "#e0ffff"),
-    ("lightgoldenrodyellow", "#fafad2"),
-    ("lightgray", "#d3d3d3"),
-    ("lightgreen", "#90ee90"),
-    ("lightgrey", "#d3d3d3"),
-    ("lightpink", "#ffb6c1"),
-    ("lightsalmon", "#ffa07a"),
-    ("lightseagreen", "#20b2aa"),
-    ("lightskyblue", "#87cefa"),
-    ("lightslategray", "#778899"),
-    ("lightslategrey", "#778899"),
-    ("lightsteelblue", "#b0c4de"),
-    ("lightyellow", "#ffffe0"),
-    ("lime", "#0f0"),
-    ("limegreen", "#32cd32"),
-    ("linen", "#faf0e6"),
-    ("magenta", "#f0f"),
-    ("maroon", "#800000"),
-    ("mediumaquamarine", "#66cdaa"),
-    ("mediumblue", "#0000cd"),
-    ("mediumorchid", "#ba55d3"),
-    ("mediumpurple", "#9370db"),
-    ("mediumseagreen", "#3cb371"),
-    ("mediumslateblue", "#7b68ee"),
-    ("mediumspringgreen", "#00fa9a"),
-    ("mediumturquoise", "#48d1cc"),
-    ("mediumvioletred", "#c71585"),
-    ("midnightblue", "#191970"),
-    ("mintcream", "#f5fffa"),
-    ("mistyrose", "#ffe4e1"),
-    ("moccasin", "#ffe4b5"),
-    ("navajowhite", "#ffdead"),
-    ("navy", "#000080"),
-    ("oldlace", "#fdf5e6"),
-    ("olive", "#808000"),
-    ("olivedrab", "#6b8e23"),
-    ("orange", "#ffa500"),
-    ("orangered", "#ff4500"),
-    ("orchid", "#da70d6"),
-    ("palegoldenrod", "#eee8aa"),
-    ("palegreen", "#98fb98"),
-    ("paleturquoise", "#afeeee"),
-    ("palevioletred", "#db7093"),
-    ("papayawhip", "#ffefd5"),
-    ("peachpuff", "#ffdab9"),
-    ("peru", "#cd853f"),
-    ("pink", "#ffc0cb"),
-    ("plum", "#dda0dd"),
-    ("powderblue", "#b0e0e6"),
-    ("purple", "#800080"),
-    ("rebeccapurple", "#639"),
-    ("red", "#f00"),
-    ("rosybrown", "#bc8f8f"),
-    ("royalblue", "#4169e1"),
-    ("saddlebrown", "#8b4513"),
-    ("salmon", "#fa8072"),
-    ("sandybrown", "#f4a460"),
-    ("seagreen", "#2e8b57"),
-    ("seashell", "#fff5ee"),
-    ("sienna", "#a0522d"),
-    ("silver", "#c0c0c0"),
-    ("skyblue", "#87ceeb"),
-    ("slateblue", "#6a5acd"),
-    ("slategray", "#708090"),
-    ("slategrey", "#708090"),
-    ("snow", "#fffafa"),
-    ("springgreen", "#00ff7f"),
-    ("steelblue", "#4682b4"),
-    ("tan", "#d2b48c"),
-    ("teal", "#008080"),
-    ("thistle", "#d8bfd8"),
-    ("tomato", "#ff6347"),
-    ("transparent", "#0000"),
-    ("turquoise", "#40e0d0"),
-    ("violet", "#ee82ee"),
-    ("wheat", "#f5deb3"),
-    ("white", "#fff"),
-    ("whitesmoke", "#f5f5f5"),
-    ("yellow", "#ff0"),
-    ("yellowgreen", "#9acd32"),
+#[inline(always)]
+fn tlf(s: &[u8]) -> String {
+    let mut r = String::with_capacity(s.len());
+    unsafe {
+        let b = r.as_mut_vec();
+        b.extend(s.iter().map(|&b| b | 0x20));
+    }
+    r
+}
+
+pub fn shorten_css_color(i: impl AsRef<str>) -> String {
+    let s = i.as_ref().as_bytes();
+    if s.is_empty() {
+        return String::new();
+    }
+
+    let tr = tw(s);
+
+    if tr.len() < 5 {
+        if tr.eq_ignore_ascii_case(b"#f00") {
+            return String::from("red");
+        }
+        return tlf(tr);
+    }
+
+    pc(tr).map_or_else(|| tlf(tr), |x| cs(&x))
+}
+
+const K: &[(&[u8], &[u8])] = &[
+    (b"aliceblue", b"#f0f8ff"),
+    (b"antiquewhite", b"#faebd7"),
+    (b"aqua", b"#0ff"),
+    (b"aquamarine", b"#7fffd4"),
+    (b"azure", b"#f0ffff"),
+    (b"beige", b"#f5f5dc"),
+    (b"bisque", b"#ffe4c4"),
+    (b"black", b"#000"),
+    (b"blanchedalmond", b"#ffebcd"),
+    (b"blue", b"#00f"),
+    (b"blueviolet", b"#8a2be2"),
+    (b"brown", b"#a52a2a"),
+    (b"burlywood", b"#deb887"),
+    (b"cadetblue", b"#5f9ea0"),
+    (b"chartreuse", b"#7fff00"),
+    (b"chocolate", b"#d2691e"),
+    (b"coral", b"#ff7f50"),
+    (b"cornflowerblue", b"#6495ed"),
+    (b"cornsilk", b"#fff8dc"),
+    (b"crimson", b"#dc143c"),
+    (b"cyan", b"#0ff"),
+    (b"darkblue", b"#00008b"),
+    (b"darkcyan", b"#008b8b"),
+    (b"darkgoldenrod", b"#b8860b"),
+    (b"darkgray", b"#a9a9a9"),
+    (b"darkgreen", b"#006400"),
+    (b"darkgrey", b"#a9a9a9"),
+    (b"darkkhaki", b"#bdb76b"),
+    (b"darkmagenta", b"#8b008b"),
+    (b"darkolivegreen", b"#556b2f"),
+    (b"darkorange", b"#ff8c00"),
+    (b"darkorchid", b"#9932cc"),
+    (b"darkred", b"#8b0000"),
+    (b"darksalmon", b"#e9967a"),
+    (b"darkseagreen", b"#8fbc8f"),
+    (b"darkslateblue", b"#483d8b"),
+    (b"darkslategray", b"#2f4f4f"),
+    (b"darkslategrey", b"#2f4f4f"),
+    (b"darkturquoise", b"#00ced1"),
+    (b"darkviolet", b"#9400d3"),
+    (b"deeppink", b"#ff1493"),
+    (b"deepskyblue", b"#00bfff"),
+    (b"dimgray", b"#696969"),
+    (b"dimgrey", b"#696969"),
+    (b"dodgerblue", b"#1e90ff"),
+    (b"firebrick", b"#b22222"),
+    (b"floralwhite", b"#fffaf0"),
+    (b"forestgreen", b"#228b22"),
+    (b"fuchsia", b"#f0f"),
+    (b"gainsboro", b"#dcdcdc"),
+    (b"ghostwhite", b"#f8f8ff"),
+    (b"gold", b"#ffd700"),
+    (b"goldenrod", b"#daa520"),
+    (b"gray", b"#808080"),
+    (b"green", b"#008000"),
+    (b"greenyellow", b"#adff2f"),
+    (b"grey", b"#808080"),
+    (b"honeydew", b"#f0fff0"),
+    (b"hotpink", b"#ff69b4"),
+    (b"indianred", b"#cd5c5c"),
+    (b"indigo", b"#4b0082"),
+    (b"ivory", b"#fffff0"),
+    (b"khaki", b"#f0e68c"),
+    (b"lavender", b"#e6e6fa"),
+    (b"lavenderblush", b"#fff0f5"),
+    (b"lawngreen", b"#7cfc00"),
+    (b"lemonchiffon", b"#fffacd"),
+    (b"lightblue", b"#add8e6"),
+    (b"lightcoral", b"#f08080"),
+    (b"lightcyan", b"#e0ffff"),
+    (b"lightgoldenrodyellow", b"#fafad2"),
+    (b"lightgray", b"#d3d3d3"),
+    (b"lightgreen", b"#90ee90"),
+    (b"lightgrey", b"#d3d3d3"),
+    (b"lightpink", b"#ffb6c1"),
+    (b"lightsalmon", b"#ffa07a"),
+    (b"lightseagreen", b"#20b2aa"),
+    (b"lightskyblue", b"#87cefa"),
+    (b"lightslategray", b"#778899"),
+    (b"lightslategrey", b"#778899"),
+    (b"lightsteelblue", b"#b0c4de"),
+    (b"lightyellow", b"#ffffe0"),
+    (b"lime", b"#0f0"),
+    (b"limegreen", b"#32cd32"),
+    (b"linen", b"#faf0e6"),
+    (b"magenta", b"#f0f"),
+    (b"maroon", b"#800000"),
+    (b"mediumaquamarine", b"#66cdaa"),
+    (b"mediumblue", b"#0000cd"),
+    (b"mediumorchid", b"#ba55d3"),
+    (b"mediumpurple", b"#9370db"),
+    (b"mediumseagreen", b"#3cb371"),
+    (b"mediumslateblue", b"#7b68ee"),
+    (b"mediumspringgreen", b"#00fa9a"),
+    (b"mediumturquoise", b"#48d1cc"),
+    (b"mediumvioletred", b"#c71585"),
+    (b"midnightblue", b"#191970"),
+    (b"mintcream", b"#f5fffa"),
+    (b"mistyrose", b"#ffe4e1"),
+    (b"moccasin", b"#ffe4b5"),
+    (b"navajowhite", b"#ffdead"),
+    (b"navy", b"#000080"),
+    (b"oldlace", b"#fdf5e6"),
+    (b"olive", b"#808000"),
+    (b"olivedrab", b"#6b8e23"),
+    (b"orange", b"#ffa500"),
+    (b"orangered", b"#ff4500"),
+    (b"orchid", b"#da70d6"),
+    (b"palegoldenrod", b"#eee8aa"),
+    (b"palegreen", b"#98fb98"),
+    (b"paleturquoise", b"#afeeee"),
+    (b"palevioletred", b"#db7093"),
+    (b"papayawhip", b"#ffefd5"),
+    (b"peachpuff", b"#ffdab9"),
+    (b"peru", b"#cd853f"),
+    (b"pink", b"#ffc0cb"),
+    (b"plum", b"#dda0dd"),
+    (b"powderblue", b"#b0e0e6"),
+    (b"purple", b"#800080"),
+    (b"rebeccapurple", b"#639"),
+    (b"red", b"#f00"),
+    (b"rosybrown", b"#bc8f8f"),
+    (b"royalblue", b"#4169e1"),
+    (b"saddlebrown", b"#8b4513"),
+    (b"salmon", b"#fa8072"),
+    (b"sandybrown", b"#f4a460"),
+    (b"seagreen", b"#2e8b57"),
+    (b"seashell", b"#fff5ee"),
+    (b"sienna", b"#a0522d"),
+    (b"silver", b"#c0c0c0"),
+    (b"skyblue", b"#87ceeb"),
+    (b"slateblue", b"#6a5acd"),
+    (b"slategray", b"#708090"),
+    (b"slategrey", b"#708090"),
+    (b"snow", b"#fffafa"),
+    (b"springgreen", b"#00ff7f"),
+    (b"steelblue", b"#4682b4"),
+    (b"tan", b"#d2b48c"),
+    (b"teal", b"#008080"),
+    (b"thistle", b"#d8bfd8"),
+    (b"tomato", b"#ff6347"),
+    (b"transparent", b"#0000"),
+    (b"turquoise", b"#40e0d0"),
+    (b"violet", b"#ee82ee"),
+    (b"wheat", b"#f5deb3"),
+    (b"white", b"#fff"),
+    (b"whitesmoke", b"#f5f5f5"),
+    (b"yellow", b"#ff0"),
+    (b"yellowgreen", b"#9acd32"),
 ];
