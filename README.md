@@ -16,5 +16,5 @@ cargo add shortest-color
 ```
 ```toml
 [dependencies]
-shortest-color = "0.1.4"
+shortest-color = "0.1.3"
 ```
