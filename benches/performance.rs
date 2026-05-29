@@ -54,7 +54,7 @@ where
 }
 
 fn main() {
-    println!("🚀 CSS Color Shortener Benchmark");
+    println!("CSS Color Shortener Benchmark");
     println!("Running {} iterations per test\n", ITERATIONS);
     println!(
         "{:<25} {:>10} {:>10} {:>15}",

@@ -1,12 +1,12 @@
 [package]
 name = "shortest-color"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 description = "Color shortener"
 license = "MIT"
 repository = "https://github.com/rostislavnagimov/shortest-color"
-keywords = ["parser", "web", "parsing", "css", "utility"]
-categories = ["web-programming", "development-tools", "parsing"]
+keywords = ["color", "css", "hex", "web", "optimization"]
+categories = ["web-programming", "parsing", "graphics"]
 
 include = ["src/lib.rs"]
 

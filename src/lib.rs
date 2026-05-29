@@ -1,74 +1,78 @@
 use std::collections::HashMap;
 use std::sync::LazyLock;
-
 #[repr(C)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
-struct C {
+struct A {
     r: u8,
     g: u8,
     b: u8,
     a: u8,
 }
-
 #[inline(always)]
-const fn h(b: u8) -> u8 {
-    match b {
-        b'0'..=b'9' => b - b'0',
-        b'A'..=b'F' => b - b'A' + 10,
-        b'a'..=b'f' => b - b'a' + 10,
+const fn b(v: u8) -> u8 {
+    match v {
+        b'0'..=b'9' => v - b'0',
+        b'A'..=b'F' => v - b'A' + 10,
+        b'a'..=b'f' => v - b'a' + 10,
         _ => 255,
     }
 }
-
 #[inline(always)]
-const fn p(b: &[u8], i: usize) -> Option<u8> {
-    let h1 = h(b[i]);
-    let l = h(b[i + 1]);
-    if h1 == 255 || l == 255 {
+const fn c(s: &[u8], i: usize) -> Option<u8> {
+    let h = b(s[i]);
+    let l = b(s[i + 1]);
+    if h == 255 || l == 255 {
         None
     } else {
-        Some((h1 << 4) | l)
+        Some((h << 4) | l)
     }
 }
-
 #[inline(always)]
-const fn sg(b: u8) -> Option<u8> {
-    let v = h(b);
-    if v == 255 {
+const fn d(v: u8) -> Option<u8> {
+    let x = b(v);
+    if x == 255 {
         None
     } else {
-        Some((v << 4) | v)
+        Some((x << 4) | x)
     }
 }
-
 #[inline(always)]
-fn n(b: &[u8], m: f32, a: bool) -> Option<f32> {
-    let l = b.len();
+fn e(s: &[u8], m: f32, g: bool) -> Option<f32> {
+    let l = s.len();
     if l == 0 || l > 8 {
         return None;
     }
-
+    if !g && !s.contains(&b'.') {
+        let mut r = 0u32;
+        for &v in s {
+            if !v.is_ascii_digit() {
+                return None;
+            }
+            r = r * 10 + (v - b'0') as u32;
+        }
+        let f = r as f32;
+        return if f > m { None } else { Some(f) };
+    }
     let mut r = 0.0f32;
-    let mut d = false;
+    let mut di = false;
     let mut dv = 10.0f32;
-    let ng = a && b[0] == b'-';
+    let ng = g && s[0] == b'-';
     let st = if ng {
         if l == 1 {
             return None;
         }
         1
     } else {
-        if !a && b[0] == b'-' {
+        if !g && s[0] == b'-' {
             return None;
         }
         0
     };
-
-    for &c in &b[st..] {
-        match c {
+    for &v in &s[st..] {
+        match v {
             b'0'..=b'9' => {
-                let dt = (c - b'0') as f32;
-                if d {
+                let dt = (v - b'0') as f32;
+                if di {
                     r += dt / dv;
                     dv *= 10.0;
                     if dv > 10000.0 {
@@ -82,118 +86,102 @@ fn n(b: &[u8], m: f32, a: bool) -> Option<f32> {
                 }
             }
             b'.' => {
-                if d {
+                if di {
                     return None;
                 }
-                d = true;
+                di = true;
             }
             _ => return None,
         }
     }
-
     let f = if ng { -r } else { r };
-    if f > m || (!a && f < 0.0) {
+    if f > m || (!g && f < 0.0) {
         None
     } else {
         Some(f)
     }
 }
-
 #[inline(always)]
-fn rt(b: &[u8]) -> Option<u8> {
-    let l = b.len();
+fn f(s: &[u8]) -> Option<u8> {
+    let l = s.len();
     if l == 0 || l > 6 {
         return None;
     }
-
-    if !b.contains(&b'.') {
-        let mut rs = 0u32;
-        for &c in b {
-            if !c.is_ascii_digit() {
+    if !s.contains(&b'.') {
+        let mut r = 0u32;
+        for &v in s {
+            if !v.is_ascii_digit() {
                 return None;
             }
-            rs = rs * 10 + (c - b'0') as u32;
-            if rs > 255 {
+            r = r * 10 + (v - b'0') as u32;
+            if r > 255 {
                 return None;
             }
         }
-        return Some(rs as u8);
+        return Some(r as u8);
     }
-
-    let rt = n(b, 255.9, false)?;
-    Some((rt + 0.5) as u8)
+    let r = e(s, 255.9, false)?;
+    Some((r + 0.5) as u8)
 }
-
 #[inline(always)]
-fn pr(b: &[u8]) -> Option<f32> {
-    let l = b.len();
-    if !(2..=6).contains(&l) || b[l - 1] != b'%' {
+fn g(s: &[u8]) -> Option<f32> {
+    let l = s.len();
+    if !(2..=6).contains(&l) || s[l - 1] != b'%' {
         return None;
     }
-
-    let np = &b[..l - 1];
-    let rs = n(np, 100.0, true)?;
-    if !(0.0..=100.0).contains(&rs) {
+    let r = e(&s[..l - 1], 100.0, true)?;
+    if !(0.0..=100.0).contains(&r) {
         return None;
     }
-    Some(rs)
+    Some(r)
 }
-
 #[inline(always)]
-fn al(b: &[u8]) -> Option<u8> {
-    if b.is_empty() {
+fn h(s: &[u8]) -> Option<u8> {
+    if s.is_empty() {
         return None;
     }
-
-    if b[b.len() - 1] == b'%' {
-        let pc = pr(b)?;
-        return Some((pc * 2.55 + 0.5) as u8);
+    if s[s.len() - 1] == b'%' {
+        let p = g(s)?;
+        return Some((p * 2.55 + 0.5) as u8);
     }
-
-    let rs = n(b, 1.0, false)?;
-    Some((rs * 255.0 + 0.5) as u8)
+    let r = e(s, 1.0, false)?;
+    Some((r * 255.0 + 0.5) as u8)
 }
-
 #[inline(always)]
-fn ew(sl: &[u8], sf: &[u8]) -> bool {
-    let sl_l = sl.len();
-    let sf_l = sf.len();
-    sl_l >= sf_l && sl[sl_l - sf_l..].eq_ignore_ascii_case(sf)
+fn i(sl: &[u8], sf: &[u8]) -> bool {
+    let a = sl.len();
+    let z = sf.len();
+    a >= z && sl[a - z..].eq_ignore_ascii_case(sf)
 }
-
 #[inline(always)]
-fn an(s: &str) -> Option<f32> {
-    let b = s.as_bytes();
-    let l = b.len();
+fn j(s: &str) -> Option<f32> {
+    let v = s.as_bytes();
+    let l = v.len();
     if l == 0 {
         return None;
     }
-
-    let (ns, mu) = if ew(b, b"grad") {
+    let (ns, mu) = if i(v, b"grad") {
         (&s[..l - 4], 0.9)
-    } else if ew(b, b"turn") {
+    } else if i(v, b"turn") {
         (&s[..l - 4], 360.0)
-    } else if ew(b, b"deg") {
+    } else if i(v, b"deg") {
         (&s[..l - 3], 1.0)
-    } else if ew(b, b"rad") {
+    } else if i(v, b"rad") {
         (&s[..l - 3], 57.29578)
     } else {
         (s, 1.0)
     };
-
-    let hu = n(ns.as_bytes(), f32::MAX, true)?;
+    let hu = e(ns.as_bytes(), f32::MAX, true)?;
     Some(((hu * mu % 360.0) + 360.0) % 360.0)
 }
-
 #[inline(always)]
-fn hs(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
+fn k(hue: f32, s: f32, l: f32) -> (u8, u8, u8) {
     let sn = s * 0.01;
     let ln = l * 0.01;
     let ch = (1.0 - (2.0 * ln - 1.0).abs()) * sn;
-    let hc = h / 60.0;
+    let hc = hue / 60.0;
     let x = ch * (1.0 - ((hc % 2.0) - 1.0).abs());
     let m = ln - ch * 0.5;
-
     let (r, g, b) = match hc as u8 {
         0 => (ch, x, 0.0),
         1 => (x, ch, 0.0),
@@ -202,119 +190,95 @@ fn hs(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
         4 => (x, 0.0, ch),
         _ => (ch, 0.0, x),
     };
-
     (
         ((r + m) * 255.0 + 0.5) as u8,
         ((g + m) * 255.0 + 0.5) as u8,
         ((b + m) * 255.0 + 0.5) as u8,
     )
 }
-
 #[inline(always)]
-fn hc(s: &[u8]) -> Option<C> {
-    let hp = &s[1..];
-    match hp.len() {
-        3 => Some(C {
-            r: sg(hp[0])?,
-            g: sg(hp[1])?,
-            b: sg(hp[2])?,
+fn l(s: &[u8]) -> Option<A> {
+    let p = &s[1..];
+    match p.len() {
+        3 => Some(A {
+            r: d(p[0])?,
+            g: d(p[1])?,
+            b: d(p[2])?,
             a: 255,
         }),
-        4 => Some(C {
-            r: sg(hp[0])?,
-            g: sg(hp[1])?,
-            b: sg(hp[2])?,
-            a: sg(hp[3])?,
+        4 => Some(A {
+            r: d(p[0])?,
+            g: d(p[1])?,
+            b: d(p[2])?,
+            a: d(p[3])?,
         }),
-        6 => Some(C {
-            r: p(hp, 0)?,
-            g: p(hp, 2)?,
-            b: p(hp, 4)?,
+        6 => Some(A {
+            r: c(p, 0)?,
+            g: c(p, 2)?,
+            b: c(p, 4)?,
             a: 255,
         }),
-        8 => Some(C {
-            r: p(hp, 0)?,
-            g: p(hp, 2)?,
-            b: p(hp, 4)?,
-            a: p(hp, 6)?,
+        8 => Some(A {
+            r: c(p, 0)?,
+            g: c(p, 2)?,
+            b: c(p, 4)?,
+            a: c(p, 6)?,
         }),
         _ => None,
     }
 }
-
-static NAME_MAP: LazyLock<HashMap<Vec<u8>, C>> = LazyLock::new(|| {
+static M: LazyLock<HashMap<Vec<u8>, A>> = LazyLock::new(|| {
     let mut map = HashMap::new();
     for &(nm, hx) in K {
-        if let Some(c) = hc(hx) {
-            let lower_name = nm.iter().map(|&b| b | 0x20).collect();
-            map.insert(lower_name, c);
+        if let Some(cl) = l(hx) {
+            let lo: Vec<u8> = nm.iter().map(|&v| v | 0x20).collect();
+            map.insert(lo, cl);
         }
     }
     map
 });
-
 #[inline(always)]
-fn lk(nm: &[u8]) -> Option<C> {
-    let lower_nm: Vec<u8> = nm.iter().map(|&b| b | 0x20).collect();
-    NAME_MAP.get(&lower_nm).copied()
+fn n(s: &[u8]) -> Option<A> {
+    let lo: Vec<u8> = s.iter().map(|&v| v | 0x20).collect();
+    M.get(&lo).copied()
 }
-
 #[inline(always)]
-fn ar(ag: &[u8]) -> Option<([&[u8]; 4], usize)> {
+fn o(ag: &[u8]) -> Option<([&[u8]; 4], usize)> {
     let mut pt = [&[][..]; 4];
-    let mut c = 0;
+    let mut ct = 0;
     let mut st = 0;
-    let mut ia = false;
-
-    for i in 0..ag.len() {
-        let b = ag[i];
-        let is = matches!(b, b' ' | b'\t' | b',');
-
-        if !is && !ia {
-            st = i;
-            ia = true;
-        } else if is && ia {
-            if c >= 4 {
-                return None;
+    for idx in 0..=ag.len() {
+        let sp = idx == ag.len() || matches!(ag[idx], b' ' | b'\t' | b',');
+        if sp {
+            if idx > st {
+                if ct >= 4 {
+                    return None;
+                }
+                pt[ct] = &ag[st..idx];
+                ct += 1;
             }
-            pt[c] = &ag[st..i];
-            c += 1;
-            ia = false;
+            st = idx + 1;
         }
     }
-
-    if ia {
-        if c >= 4 {
-            return None;
-        }
-        pt[c] = &ag[st..];
-        c += 1;
-    }
-
-    if (2..=4).contains(&c) {
-        Some((pt, c))
+    if (2..=4).contains(&ct) {
+        Some((pt, ct))
     } else {
         None
     }
 }
-
 #[inline(always)]
-fn pc(s: &[u8]) -> Option<C> {
-    let l = s.len();
-
+fn p(s: &[u8]) -> Option<A> {
+    let ln = s.len();
     if s[0] == b'#' {
-        return hc(s);
+        return l(s);
     }
-
     if s[3] != b'(' && s[4] != b'(' {
-        return lk(s);
+        return n(s);
     }
-
-    if s[l - 1] != b')' {
+    if s[ln - 1] != b')' {
         return None;
     }
-
-    let (f, ha, st) = match &s[..3] {
+    let (fmt, ha, st) = match &s[..3] {
         px if px.eq_ignore_ascii_case(b"rgb") => match s[3] {
             b'(' => (0, false, 4),
             b'a' => (0, true, 5),
@@ -327,55 +291,53 @@ fn pc(s: &[u8]) -> Option<C> {
         },
         _ => return None,
     };
-
-    let (pt, c) = ar(&s[st..l - 1])?;
-
-    if ha && c == 2 {
-        if let Some(bc) = lk(pt[0]) {
-            let a = al(pt[1])?;
-            return Some(C { a, ..bc });
+    let (pt, ct) = o(&s[st..ln - 1])?;
+    if ha && ct == 2 {
+        if let Some(bc) = n(pt[0]) {
+            let av = h(pt[1])?;
+            return Some(A { a: av, ..bc });
         }
         return None;
     }
-
     let ep = if ha { 4 } else { 3 };
-    if c != ep {
+    if ct != ep {
         return None;
     }
-
-    let a = if ha { al(pt[3])? } else { 255 };
-
-    match f {
-        0 => {
-            let rg = rt(pt[0])?;
-            let g = rt(pt[1])?;
-            let b = rt(pt[2])?;
-            Some(C { r: rg, g, b, a })
-        }
+    let av = if ha { h(pt[3])? } else { 255 };
+    match fmt {
+        0 => Some(A {
+            r: f(pt[0])?,
+            g: f(pt[1])?,
+            b: f(pt[2])?,
+            a: av,
+        }),
         _ => {
-            let hs_str = std::str::from_utf8(pt[0]).ok()?;
-            let hu = an(hs_str)?;
-            let sa = pr(pt[1])?;
-            let li = pr(pt[2])?;
-            let (r, g, b) = hs(hu, sa, li);
-            Some(C { r, g, b, a })
+            let hs = std::str::from_utf8(pt[0]).ok()?;
+            let hu = j(hs)?;
+            let sa = g(pt[1])?;
+            let li = g(pt[2])?;
+            let (r, gv, bv) = k(hu, sa, li);
+            Some(A {
+                r,
+                g: gv,
+                b: bv,
+                a: av,
+            })
         }
     }
 }
-
 #[inline(always)]
-const fn sh(r: u8, g: u8, b: u8, a: u8) -> bool {
+const fn q(r: u8, g: u8, b: u8, a: u8) -> bool {
     (r & 0x0F) * 0x11 == r
         && (g & 0x0F) * 0x11 == g
         && (b & 0x0F) * 0x11 == b
         && (a & 0x0F) * 0x11 == a
 }
-
-static L: LazyLock<Vec<(u32, &'static [u8])>> = LazyLock::new(|| {
+static R: LazyLock<Vec<(u32, &'static [u8])>> = LazyLock::new(|| {
     let v: Vec<_> = K
         .iter()
         .filter_map(|&(nm, hx)| {
-            hc(hx).and_then(|cl| {
+            l(hx).and_then(|cl| {
                 if cl.a == 255 {
                     let rg = ((cl.r as u32) << 16) | ((cl.g as u32) << 8) | (cl.b as u32);
                     Some((rg, nm))
@@ -385,92 +347,83 @@ static L: LazyLock<Vec<(u32, &'static [u8])>> = LazyLock::new(|| {
             })
         })
         .collect();
-
-    let mut m = HashMap::new();
+    let mut mp = HashMap::new();
     for (rg, nm) in v {
-        m.entry(rg).or_insert(nm);
+        mp.entry(rg).or_insert(nm);
     }
-
-    let mut result: Vec<_> = m.into_iter().collect();
-    result.sort_unstable_by_key(|&(rg, _)| rg);
-    result
+    let mut res: Vec<_> = mp.into_iter().collect();
+    res.sort_unstable_by_key(|&(rg, _)| rg);
+    res
 });
-
 #[inline(always)]
-fn fn1(rg: u32) -> Option<&'static [u8]> {
-    L.binary_search_by_key(&rg, |&(r, _)| r)
+fn s(rg: u32) -> Option<&'static [u8]> {
+    R.binary_search_by_key(&rg, |&(r, _)| r)
         .ok()
-        .map(|i| L[i].1)
+        .map(|i| R[i].1)
 }
-
 #[inline(always)]
-const fn hd(n: u8) -> u8 {
-    match n {
-        0..=9 => b'0' + n,
-        _ => b'a' + (n - 10),
+const fn t(v: u8) -> u8 {
+    match v {
+        0..=9 => b'0' + v,
+        _ => b'a' + (v - 10),
     }
 }
-
 #[inline(always)]
-fn cs(cl: &C) -> String {
+fn u(cl: &A) -> String {
     if cl.a != 255 {
-        let sh1 = sh(cl.r, cl.g, cl.b, cl.a);
+        let sh = q(cl.r, cl.g, cl.b, cl.a);
         let mut bf = [0u8; 9];
-        let sl = if sh1 {
+        let sl = if sh {
             bf[0] = b'#';
-            bf[1] = hd(cl.r >> 4);
-            bf[2] = hd(cl.g >> 4);
-            bf[3] = hd(cl.b >> 4);
-            bf[4] = hd(cl.a >> 4);
+            bf[1] = t(cl.r >> 4);
+            bf[2] = t(cl.g >> 4);
+            bf[3] = t(cl.b >> 4);
+            bf[4] = t(cl.a >> 4);
             &bf[..5]
         } else {
             bf[0] = b'#';
-            bf[1] = hd(cl.r >> 4);
-            bf[2] = hd(cl.r & 0xF);
-            bf[3] = hd(cl.g >> 4);
-            bf[4] = hd(cl.g & 0xF);
-            bf[5] = hd(cl.b >> 4);
-            bf[6] = hd(cl.b & 0xF);
-            bf[7] = hd(cl.a >> 4);
-            bf[8] = hd(cl.a & 0xF);
+            bf[1] = t(cl.r >> 4);
+            bf[2] = t(cl.r & 0xF);
+            bf[3] = t(cl.g >> 4);
+            bf[4] = t(cl.g & 0xF);
+            bf[5] = t(cl.b >> 4);
+            bf[6] = t(cl.b & 0xF);
+            bf[7] = t(cl.a >> 4);
+            bf[8] = t(cl.a & 0xF);
             &bf[..9]
         };
         return unsafe { std::str::from_utf8_unchecked(sl) }.to_string();
     }
-
     let rg = ((cl.r as u32) << 16) | ((cl.g as u32) << 8) | (cl.b as u32);
-
-    if let Some(nm) = fn1(rg) {
-        let sh1 = sh(cl.r, cl.g, cl.b, 255);
-        let ml = if sh1 { 4 } else { 7 };
+    if let Some(nm) = s(rg) {
+        let sh = q(cl.r, cl.g, cl.b, 255);
+        let ml = if sh { 4 } else { 7 };
         if nm.len() < ml {
             return unsafe { std::str::from_utf8_unchecked(nm) }.to_string();
         }
     }
-
-    let sh1 = sh(cl.r, cl.g, cl.b, 255);
+    let sh = q(cl.r, cl.g, cl.b, 255);
     let mut bf = [0u8; 7];
-    let sl = if sh1 {
+    let sl = if sh {
         bf[0] = b'#';
-        bf[1] = hd(cl.r >> 4);
-        bf[2] = hd(cl.g >> 4);
-        bf[3] = hd(cl.b >> 4);
+        bf[1] = t(cl.r >> 4);
+        bf[2] = t(cl.g >> 4);
+        bf[3] = t(cl.b >> 4);
         &bf[..4]
     } else {
         bf[0] = b'#';
-        bf[1] = hd(cl.r >> 4);
-        bf[2] = hd(cl.r & 0xF);
-        bf[3] = hd(cl.g >> 4);
-        bf[4] = hd(cl.g & 0xF);
-        bf[5] = hd(cl.b >> 4);
-        bf[6] = hd(cl.b & 0xF);
+        bf[1] = t(cl.r >> 4);
+        bf[2] = t(cl.r & 0xF);
+        bf[3] = t(cl.g >> 4);
+        bf[4] = t(cl.g & 0xF);
+        bf[5] = t(cl.b >> 4);
+        bf[6] = t(cl.b & 0xF);
         &bf[..7]
     };
     unsafe { std::str::from_utf8_unchecked(sl) }.to_string()
 }
-
 #[inline(always)]
-fn tw(s: &[u8]) -> &[u8] {
+fn v(s: &[u8]) -> &[u8] {
     let a = s
         .iter()
         .position(|&b| !matches!(b, b' ' | b'\t' | b'\n' | b'\r'))
@@ -481,35 +434,29 @@ fn tw(s: &[u8]) -> &[u8] {
         .map_or(a, |i| i + 1);
     &s[a..z]
 }
-
 #[inline(always)]
-fn tlf(s: &[u8]) -> String {
+fn w(s: &[u8]) -> String {
     let mut r = String::with_capacity(s.len());
     unsafe {
         let b = r.as_mut_vec();
-        b.extend(s.iter().map(|&b| b | 0x20));
+        b.extend(s.iter().map(|&v| v | 0x20));
     }
     r
 }
-
 pub fn shorten_css_color(i: impl AsRef<str>) -> String {
     let s = i.as_ref().as_bytes();
     if s.is_empty() {
         return String::new();
     }
-
-    let tr = tw(s);
-
+    let tr = v(s);
     if tr.len() < 5 {
         if tr.eq_ignore_ascii_case(b"#f00") {
             return String::from("red");
         }
-        return tlf(tr);
+        return w(tr);
     }
-
-    pc(tr).map_or_else(|| tlf(tr), |x| cs(&x))
+    p(tr).map_or_else(|| w(tr), |x| u(&x))
 }
-
 const K: &[(&[u8], &[u8])] = &[
     (b"aliceblue", b"#f0f8ff"),
     (b"antiquewhite", b"#faebd7"),
